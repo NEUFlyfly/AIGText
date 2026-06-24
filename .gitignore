@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Runtime binaries (llama.cpp — too large for git)
+bin/
+
+# Model weights (too large for git)
+models/lang/*.gguf
+models/vision/*.pt
+models/vision/*.bin
+models/vision/*.safetensors
+
+# ChromaDB vector store (rebuild from documents)
+data/vectorstore/
+
+# Runtime logs
+logs/
+
+# Project planning
+.sisyphus/
+
+# Environment
+.env
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
