@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts import run_host_a, run_host_b
+from src import run_host_a, run_host_b
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -175,7 +175,7 @@ def _bash_executable() -> str:
 def test_host_python_scripts_help_is_timeout_safe() -> None:
     for script_name in ('run_host_a.py', 'run_host_b.py'):
         result = subprocess.run(
-            [sys.executable, str(REPO_ROOT / 'scripts' / script_name), '--help'],
+            [sys.executable, str(REPO_ROOT / 'src' / script_name), '--help'],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,

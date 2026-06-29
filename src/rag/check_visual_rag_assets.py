@@ -43,7 +43,13 @@ def _dir_has_files(path: str) -> bool:
     if not p.is_dir():
         return False
     try:
-        return any(item.is_file() for item in p.iterdir())
+        for item in p.iterdir():
+            if item.is_file():
+                return True
+            if item.is_dir():
+                if _dir_has_files(str(item)):
+                    return True
+        return False
     except OSError:
         return False
 

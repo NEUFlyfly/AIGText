@@ -1,6 +1,10 @@
-# 启动电脑B 服务（视觉模型）
-# 用法: bash scripts/start_vision_server.sh
-#
-# 1. 检查 models/vision/ 下视觉模型文件是否存在
-# 2. 设置 PYTHONPATH，启动 vision_server (端口 18081)
-#    python -m src.vision.vision_server
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd -P)"
+PYTHON_BIN="${PYTHON:-python}"
+
+export PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+
+exec "$PYTHON_BIN" "$REPO_ROOT/src/run_host_b.py" "$@"
