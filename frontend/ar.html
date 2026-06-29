@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>AIGText — AR 交互</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/ar.css">
+</head>
+<body class="ar-body">
+
+  <!-- Camera Feed Layer -->
+  <video id="ar-video" class="ar-video" playsinline autoplay muted></video>
+
+  <!-- Three.js Canvas Overlay -->
+  <canvas id="ar-canvas" class="ar-canvas"></canvas>
+
+  <!-- Scan-line Atmosphere -->
+  <div class="ar-scanlines"></div>
+
+  <!-- Back Button (top-left) -->
+  <button class="ar-back" id="ar-back" aria-label="返回">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+  </button>
+
+  <!-- Gyro Status Info Button (top-right) -->
+  <button class="ar-info" id="ar-info" aria-label="设备状态">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+      <circle cx="12" cy="12" r="4"/>
+    </svg>
+  </button>
+
+  <!-- HUD Data Readout -->
+  <div class="ar-hud" id="ar-hud">
+    <span class="ar-hud__item">FPS <span class="ar-hud__value" id="ar-fps">0</span></span>
+    <span class="ar-hud__item">GYRO <span class="ar-hud__value" id="ar-gyro-status">---</span></span>
+    <span class="ar-hud__item">SCL <span class="ar-hud__value" id="ar-scale-val">100%</span></span>
+  </div>
+
+  <!-- Placeholder (shown when no model placed) -->
+  <div class="ar-placeholder" id="ar-placeholder">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+      <line x1="12" y1="22.08" x2="12" y2="12"/>
+    </svg>
+    <p class="ar-placeholder__text">点击下方按钮放置 3D 模型</p>
+  </div>
+
+  <!-- Pulse Ring (shown briefly when model placed) -->
+  <div class="ar-pulse-ring hidden" id="ar-pulse"></div>
+
+  <!-- Bottom Control Bar -->
+  <div class="ar-controls">
+    <button class="ar-controls__btn" id="btn-place">放置模型</button>
+
+    <div class="ar-controls__slider-group">
+      <label for="scale-slider">缩放</label>
+      <input type="range" id="scale-slider" class="ar-controls__slider" min="50" max="200" value="100" step="1">
+    </div>
+
+    <label class="ar-controls__toggle">
+      <input type="checkbox" id="auto-rotate">
+      旋转
+    </label>
+
+    <button class="ar-controls__screenshot" id="btn-screenshot" aria-label="拍照">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="13" r="7"/>
+        <rect x="8" y="2" width="8" height="4" rx="1"/>
+        <line x1="12" y1="7" x2="12" y2="7.01"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Gyro Permission Overlay (iOS 13+, hidden by default) -->
+  <div class="ar-permission-overlay hidden" id="ar-permission">
+    <div class="ar-permission-card">
+      <div class="ar-permission-card__icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+          <circle cx="12" cy="12" r="4"/>
+        </svg>
+      </div>
+      <p class="ar-permission-card__title">启用陀螺仪</p>
+      <p class="ar-permission-card__desc">允许访问运动传感器，让 3D 模型随手机移动而旋转，获得更真实的 AR 体验。</p>
+      <button class="ar-permission-card__btn" id="btn-permission">启用陀螺仪</button>
+    </div>
+  </div>
+
+  <!-- Three.js from CDN -->
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/ar.js"></script>
+</body>
+</html>

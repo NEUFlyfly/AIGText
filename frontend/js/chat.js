@@ -26,7 +26,7 @@ const state = {
 /* ==================================================================
    DOM REFERENCES
    ================================================================== */
-const $ = (s) => document.querySelector(s);
+// $ and $$ are provided by common.js (loaded first)
 
 const dom = {
   messages: $("#messages"),
@@ -416,6 +416,329 @@ function init() {
       handleSend();
     }
   });
+
+  // Camera initialization
+  initCamera();
 }
 
 document.addEventListener("DOMContentLoaded", init);
+
+/* ==================================================================
+   CAMERA + VISION API
+   ================================================================== */
+const cameraState = {
+  stream: null,
+  facingMode: "environment",
+  capturedBlob: null,
+};
+
+const cameraDom = {};
+
+function initCameraDOM() {
+  cameraDom.button = document.getElementById("camera-button");
+  cameraDom.modal = document.getElementById("camera-modal");
+  cameraDom.video = document.getElementById("camera-video");
+  cameraDom.capture = document.getElementById("camera-capture");
+  cameraDom.close = document.getElementById("camera-close");
+  cameraDom.flip = document.getElementById("camera-flip");
+  cameraDom.preview = document.getElementById("camera-preview");
+  cameraDom.previewImg = document.getElementById("camera-preview-img");
+  cameraDom.retake = document.getElementById("camera-retake");
+  cameraDom.confirm = document.getElementById("camera-confirm");
+  cameraDom.thumb = document.getElementById("camera-thumb");
+  cameraDom.thumbImg = document.getElementById("camera-thumb-img");
+  cameraDom.thumbRemove = document.getElementById("camera-thumb-remove");
+}
+
+function initCamera() {
+  initCameraDOM();
+
+  if (!cameraDom.button || !cameraDom.modal) return;
+
+  cameraDom.button.addEventListener("click", openCamera);
+  cameraDom.close.addEventListener("click", closeCamera);
+  cameraDom.capture.addEventListener("click", capturePhoto);
+  cameraDom.flip.addEventListener("click", flipCamera);
+  cameraDom.retake.addEventListener("click", retakePhoto);
+  cameraDom.confirm.addEventListener("click", confirmPhoto);
+  cameraDom.thumbRemove.addEventListener("click", removeThumbnail);
+}
+
+async function openCamera() {
+  if (state.streaming) return;
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    Toast.show("当前设备不支持相机");
+    return;
+  }
+
+  cameraDom.modal.classList.remove("hidden");
+  cameraDom.modal.setAttribute("aria-hidden", "false");
+  cameraDom.preview.classList.add("hidden");
+  cameraDom.video.classList.remove("hidden");
+  cameraDom.capture.parentElement.classList.remove("hidden");
+
+  try {
+    cameraState.stream = await Camera.open(
+      cameraDom.video,
+      cameraState.facingMode
+    );
+  } catch (err) {
+    closeCamera();
+    if (err.name === "NotAllowedError") {
+      Toast.show("请允许相机权限后重试");
+    } else if (err.name === "NotFoundError") {
+      Toast.show("未检测到摄像头");
+    } else {
+      Toast.show("相机启动失败: " + (err.message || "未知错误"));
+    }
+  }
+}
+
+function closeCamera() {
+  if (cameraState.stream) {
+    Camera.stop(cameraState.stream);
+    cameraState.stream = null;
+  }
+  // Revoke preview blob URL to prevent memory leaks
+  if (cameraDom.previewImg && cameraDom.previewImg.src.startsWith("blob:")) {
+    URL.revokeObjectURL(cameraDom.previewImg.src);
+    cameraDom.previewImg.src = "";
+  }
+  cameraDom.video.srcObject = null;
+  cameraDom.modal.classList.add("hidden");
+  cameraDom.modal.setAttribute("aria-hidden", "true");
+}
+
+async function flipCamera() {
+  cameraState.facingMode =
+    cameraState.facingMode === "environment" ? "user" : "environment";
+
+  if (cameraState.stream) {
+    Camera.stop(cameraState.stream);
+    cameraState.stream = null;
+  }
+
+  try {
+    cameraState.stream = await Camera.open(
+      cameraDom.video,
+      cameraState.facingMode
+    );
+  } catch (err) {
+    Toast.show("切换摄像头失败");
+    cameraState.facingMode =
+      cameraState.facingMode === "environment" ? "user" : "environment";
+  }
+}
+
+async function capturePhoto() {
+  if (!cameraState.stream) return;
+
+  try {
+    cameraState.capturedBlob = await Camera.capture(cameraDom.video, 0.9);
+
+    const url = URL.createObjectURL(cameraState.capturedBlob);
+    cameraDom.previewImg.src = url;
+
+    cameraDom.video.classList.add("hidden");
+    cameraDom.capture.parentElement.classList.add("hidden");
+    cameraDom.preview.classList.remove("hidden");
+  } catch (err) {
+    Toast.show("拍照失败，请重试");
+  }
+}
+
+function retakePhoto() {
+  if (cameraDom.previewImg.src.startsWith("blob:")) {
+    URL.revokeObjectURL(cameraDom.previewImg.src);
+  }
+  cameraState.capturedBlob = null;
+  cameraDom.previewImg.src = "";
+  cameraDom.preview.classList.add("hidden");
+  cameraDom.video.classList.remove("hidden");
+  cameraDom.capture.parentElement.classList.remove("hidden");
+}
+
+async function confirmPhoto() {
+  if (!cameraState.capturedBlob) return;
+
+  const blob = cameraState.capturedBlob;
+
+  // Show thumbnail in input area
+  const url = URL.createObjectURL(blob);
+  cameraDom.thumbImg.src = url;
+  cameraDom.thumb.classList.remove("hidden");
+  cameraState.capturedBlob = blob;
+
+  closeCamera();
+
+  // Send for classification
+  await sendPhotoForClassification(blob);
+}
+
+function removeThumbnail() {
+  if (cameraDom.thumbImg.src.startsWith("blob:")) {
+    URL.revokeObjectURL(cameraDom.thumbImg.src);
+  }
+  cameraDom.thumbImg.src = "";
+  cameraDom.thumb.classList.add("hidden");
+  cameraState.capturedBlob = null;
+}
+
+/**
+ * Map Visual RAG error codes to user-facing Chinese display text.
+ */
+function visualErrorDisplayText(code) {
+  var messages = {
+    "INVALID_IMAGE": "图片无效，请重新拍摄清晰的设备照片",
+    "MODEL_NOT_READY": "识别模型未就绪，请稍后重试",
+    "INDEX_NOT_READY": "知识库索引未就绪，请稍后重试",
+    "NO_VISUAL_MATCH": "未识别到匹配的设备，请尝试不同角度或光线",
+  };
+  return messages[code] || "识别服务异常，请重试";
+}
+
+/**
+ * Display Visual RAG API error as a system message + toast.
+ */
+function displayVisualError(result, httpStatus) {
+  var errors = result.errors || [];
+  if (errors.length > 0) {
+    var code = errors[0].code;
+    var text = visualErrorDisplayText(code);
+    addMessage("system", "📷 " + text, false);
+    Toast.show(text, 4000);
+  } else {
+    var msg = "识别服务异常 (HTTP " + httpStatus + ")";
+    Toast.show(msg, 3000);
+  }
+}
+
+/**
+ * Display full Visual RAG response: candidate summary, answer, status messages.
+ * Does NOT trigger a duplicate /api/chat request when answer is already present.
+ */
+function displayVisualRagResponse(result) {
+  var status = result.status || "";
+  var answer = result.answer;
+  var candidates = result.visual_candidates || [];
+  var errors = result.errors || [];
+  var coarseCategory = result.coarse_category;
+  var coarseConfidence = result.coarse_confidence;
+
+  hideEmptyState();
+
+  // Non-blocking error display
+  if (errors.length > 0) {
+    var errorTexts = errors.map(function(e) {
+      return visualErrorDisplayText(e.code) || e.message || "未知错误";
+    }).join("; ");
+    addMessage("system", "⚠ " + errorTexts, false);
+  }
+
+  // Candidate summary with labels and scores
+  if (candidates.length > 0) {
+    var candidateLines = candidates.map(function(c) {
+      var label = c.sub_category || c.coarse_category || "未知设备";
+      var score = c.score != null ? Math.round(c.score * 100) : 0;
+      return "<strong>" + label + "</strong> (" + score + "%)";
+    });
+    var categoryPrefix = "";
+    if (coarseCategory) {
+      var confPercent = coarseConfidence != null ? Math.round(coarseConfidence * 100) : 0;
+      categoryPrefix = "大类: <strong>" + coarseCategory + "</strong> (" + confPercent + "%) · ";
+    }
+    addVisionResultBubble(categoryPrefix, candidateLines);
+  } else if (status === "NO_VISUAL_MATCH") {
+    addMessage("system", "📷 " + visualErrorDisplayText("NO_VISUAL_MATCH"), false);
+  }
+
+  // Display answer directly as assistant message (NO duplicate /api/chat)
+  if (answer) {
+    addMessage("assistant", answer, false);
+    state.messages.push({ role: "assistant", content: answer });
+    saveState();
+  } else if (status === "OK" && candidates.length > 0) {
+    addMessage("system", "📷 已识别设备但未能生成回答，请尝试文本提问", false);
+  }
+}
+
+/**
+ * Send captured photo to /api/vision/query
+ * On success: display Visual RAG response with answer directly (no second /api/chat).
+ * On error: display error text via toast and system message.
+ */
+async function sendPhotoForClassification(blob) {
+  var closeLoading = Toast.loading("正在识别设备...");
+
+  try {
+    var formData = new FormData();
+    formData.append("image", blob, "photo.jpg");
+
+    // Include optional user question from the input
+    var userQuestion = dom.input.value.trim();
+    if (userQuestion) {
+      formData.append("question", userQuestion);
+    }
+
+    var resp = await fetch("/api/vision/query", {
+      method: "POST",
+      body: formData,
+    });
+
+    var result = await resp.json().catch(function() { return null; });
+    closeLoading();
+
+    if (!result) {
+      Toast.show("识别服务返回异常", 3000);
+      return;
+    }
+
+    if (!resp.ok) {
+      displayVisualError(result, resp.status);
+      return;
+    }
+
+    displayVisualRagResponse(result);
+
+  } catch (err) {
+    closeLoading();
+    Toast.show(
+      err.name === "TypeError"
+        ? "无法连接识别服务，请检查网络"
+        : "设备识别失败: " + (err.message || "未知错误"),
+      3000
+    );
+  }
+}
+
+/**
+ * Display a system-style bubble showing visual RAG candidate summary.
+ * @param {string} categoryPrefix - coarse category info HTML fragment
+ * @param {string[]} candidateLines - array of candidate HTML lines (label + score)
+ */
+function addVisionResultBubble(categoryPrefix, candidateLines) {
+  hideEmptyState();
+
+  var el = document.createElement("div");
+  el.className = "message message--system";
+
+  var bubble = document.createElement("div");
+  bubble.className = "message__bubble";
+
+  var contentEl = document.createElement("div");
+  contentEl.className = "message__content";
+  var summaryHtml = candidateLines.join(", ");
+  contentEl.innerHTML = "<p>📷 " + (categoryPrefix || "") + "候选: " + summaryHtml + "</p>";
+
+  var timeEl = document.createElement("div");
+  timeEl.className = "message__time";
+  timeEl.textContent = formatTime();
+
+  bubble.appendChild(contentEl);
+  bubble.appendChild(timeEl);
+  el.appendChild(bubble);
+  dom.messages.appendChild(el);
+
+  scrollToBottom();
+}

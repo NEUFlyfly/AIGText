@@ -2,75 +2,129 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f0f2f5">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0b0b2b">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <title>AIGText — Chat</title>
-  <link rel="stylesheet" href="style.css">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>AIGText — 智能物联网助手</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/home.css">
 </head>
-<body>
-  <div id="app">
+<body class="home-body">
 
-    <header id="header">
-      <h1 class="header-title">AIGText</h1>
-      <div class="header-actions">
-        <button id="new-chat-btn" class="icon-btn" title="新对话" aria-label="开始新对话">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-        </button>
-        <span id="health-dot" class="health-dot" title="连接状态" aria-label="服务器连接状态"></span>
-      </div>
+  <div class="home-page">
+
+    <!-- Hero Logo -->
+    <header class="home-hero">
+      <h1 class="home-logo">AIGText</h1>
+      <p class="home-subtitle">智能物联网助手</p>
     </header>
 
-    <div id="rag-bar">
-      <label class="rag-toggle" aria-label="RAG 检索增强">
-        <span class="rag-label">RAG</span>
-        <input type="checkbox" id="rag-switch" checked>
-        <span class="rag-slider"></span>
-      </label>
-    </div>
+    <!-- Feature Cards -->
+    <main class="home-cards">
 
-    <main id="messages" aria-live="polite" aria-label="聊天消息">
-      <div id="empty-state" class="empty-state">
-        <div class="empty-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"></path>
+      <!-- Card 1: Smart Q&A -->
+      <article class="feature-card feature-card--qa" onclick="Nav.go('chat.html')" role="link" tabindex="0" aria-label="智能问答 — 点击进入聊天页面">
+        <div class="feature-card__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#667eea" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/>
           </svg>
         </div>
-        <h2 class="empty-title">AIGText</h2>
-        <p class="empty-subtitle">本地 LLM 聊天助手</p>
-      </div>
+        <div class="feature-card__body">
+          <h2 class="feature-card__title">智能问答</h2>
+          <p class="feature-card__desc">拍摄物联网设备，AI 实时识别并介绍设备功能与参数</p>
+        </div>
+        <div class="feature-card__arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </div>
+      </article>
+
+      <!-- Card 2: 3D Modeling -->
+      <article class="feature-card feature-card--model" onclick="Nav.go('modeling.html')" role="link" tabindex="0" aria-label="3D 建模 — 点击进入建模页面">
+        <div class="feature-card__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#f5576c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+            <line x1="12" y1="22.08" x2="12" y2="12"/>
+          </svg>
+        </div>
+        <div class="feature-card__body">
+          <h2 class="feature-card__title">3D 建模</h2>
+          <p class="feature-card__desc">扫描真实物体，自动生成高精度三维模型</p>
+        </div>
+        <div class="feature-card__arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </div>
+      </article>
+
+      <!-- Card 3: AR Interaction -->
+      <article class="feature-card feature-card--ar" onclick="Nav.go('ar.html')" role="link" tabindex="0" aria-label="AR 交互 — 点击进入 AR 页面">
+        <div class="feature-card__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#4facfe" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+            <circle cx="12" cy="10" r="3"/>
+            <path d="M12 7v2M12 11v2M9.5 8.5l1.5 1.5M14.5 8.5l-1.5 1.5"/>
+            <rect x="9" y="8" width="6" height="4" rx="2" stroke-dasharray="1.5 1.5" fill="none"/>
+          </svg>
+        </div>
+        <div class="feature-card__body">
+          <h2 class="feature-card__title">AR 交互</h2>
+          <p class="feature-card__desc">将 3D 模型投射到现实场景，沉浸式交互体验</p>
+        </div>
+        <div class="feature-card__arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </div>
+      </article>
+
     </main>
 
-    <footer id="input-bar">
-      <div class="input-wrapper">
-        <textarea
-          id="message-input"
-          placeholder="输入消息..."
-          rows="1"
-          autocomplete="off"
-          autocorrect="off"
-          autocapitalize="off"
-          spellcheck="false"
-          aria-label="消息输入"
-        ></textarea>
-        <button id="send-button" class="action-btn" aria-label="发送" title="发送 (Enter)">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-          </svg>
-        </button>
-        <button id="stop-button" class="action-btn stop-btn hidden" aria-label="停止生成" title="停止生成">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <rect x="6" y="6" width="12" height="12" rx="2"/>
-          </svg>
-        </button>
+    <!-- Footer: Health + Badge -->
+    <footer class="home-footer">
+      <div class="health-indicator">
+        <span id="health-dot" class="health-dot" title="后端服务连接状态" aria-label="服务器连接状态"></span>
+        <span id="health-label">检测中…</span>
+      </div>
+      <div class="home-badge" aria-label="Powered by Local AI">
+        <span class="home-badge__dot"></span>
+        <span>Powered by Local AI</span>
       </div>
     </footer>
 
   </div>
-  <script src="app.js"></script>
+
+  <script src="js/common.js"></script>
+  <script>
+    (function () {
+      var dot = document.getElementById('health-dot');
+      var label = document.getElementById('health-label');
+
+      function check() {
+        API.health().then(function (ok) {
+          if (ok) {
+            dot.classList.add('health-dot--connected');
+            label.textContent = '服务已连接';
+          } else {
+            dot.classList.remove('health-dot--connected');
+            label.textContent = '服务未连接';
+          }
+        }).catch(function () {
+          dot.classList.remove('health-dot--connected');
+          label.textContent = '服务未连接';
+        });
+      }
+
+      check();
+      setInterval(check, 30000);
+    })();
+  </script>
+
 </body>
 </html>

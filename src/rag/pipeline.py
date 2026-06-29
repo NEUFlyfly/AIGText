@@ -8,11 +8,14 @@ RAG 模块 — 问答管线编排器
 """
 
 import os
-from typing import List, Dict
+from typing import TypeAlias
 
 from .embedder import Embedder
 from .store import VectorStore
-from .retriever import Retriever
+from .retriever import MetadataFilter, QueryEmbedder, Retriever, SearchResult, SearchStore
+
+
+Chunk: TypeAlias = dict[str, str | int | float]
 
 
 # prompt 模板文件路径
@@ -39,8 +42,8 @@ class RAGPipeline:
         top_k: int = 3,
         min_score: float = 0.35,
     ):
-        self._store = VectorStore(persist_dir=persist_dir)
-        self._embedder: Embedder | None = None
+        self._store: SearchStore = VectorStore(persist_dir=persist_dir)
+        self._embedder: QueryEmbedder | None = None
         self._retriever: Retriever | None = None
         self._top_k = top_k
         self._min_score = min_score
@@ -64,7 +67,7 @@ class RAGPipeline:
                 "如果资料中没有相关信息，请如实说明。"
             )
 
-    def _ensure_embedder(self) -> Embedder:
+    def _ensure_embedder(self) -> QueryEmbedder:
         if self._embedder is None:
             self._embedder = Embedder()
             self._retriever = Retriever(self._embedder, self._store)
@@ -89,15 +92,28 @@ class RAGPipeline:
     # 检索 + Prompt 构造
     # ------------------------------------------------------------------
 
-    def retrieve(self, query: str) -> List[Dict]:
+    def retrieve(
+        self,
+        query: str,
+        doc_ids: list[str] | None = None,
+        coarse_category: str | None = None,
+        sub_category: str | None = None,
+        where: MetadataFilter | None = None,
+    ) -> list[SearchResult]:
         """检索与查询相关的文档 chunk（自动过滤低相似度结果）。"""
         if not self.is_ready:
             return []
         return self.retriever.retrieve(
-            query, top_k=self._top_k, min_score=self._min_score
+            query,
+            top_k=self._top_k,
+            min_score=self._min_score,
+            doc_ids=doc_ids,
+            coarse_category=coarse_category,
+            sub_category=sub_category,
+            where=where,
         )
 
-    def augment(self, query: str, chunks: List[Dict]) -> str:
+    def augment(self, query: str, chunks: list[Chunk]) -> str:
         """将查询和检索结果拼接为增强后的 prompt。
 
         Args:

@@ -7,7 +7,8 @@ RAG 模块 — 文本切分器
   - 优先在段落/句子边界处分割，避免切断语义
 """
 
-from typing import List, Dict
+Chunk = dict[str, str | int]
+ChunkMetadata = dict[str, str]
 
 
 # 语义切分标记（按优先级排序）
@@ -19,7 +20,8 @@ def split_text(
     source: str,
     chunk_size: int = 400,
     chunk_overlap: int = 80,
-) -> List[Dict]:
+    metadata: ChunkMetadata | None = None,
+) -> list[Chunk]:
     """将长文本切分为带重叠的 chunk。
 
     Args:
@@ -27,6 +29,7 @@ def split_text(
         source: 来源文件名
         chunk_size: 每个 chunk 的目标字符数 (中文约 2 chars/token)
         chunk_overlap: 相邻 chunk 的重叠字符数
+        metadata: 需要复制到每个 chunk 的文档元数据
 
     Returns:
         [{"chunk_id": 0, "text": "...", "source": "xxx.txt"}, ...]
@@ -39,9 +42,11 @@ def split_text(
     paragraphs = _split_by_separator(text, "\n\n")
     paragraphs = [p.strip() for p in paragraphs if p.strip()]
 
-    chunks: List[Dict] = []
+    chunks: list[Chunk] = []
     chunk_id = 0
     current_chunk = ""
+    base_metadata = dict(metadata or {})
+    base_metadata["source"] = source
 
     for para in paragraphs:
         # 单个段落过长时进一步切分
@@ -49,9 +54,9 @@ def split_text(
             # 先把当前积累的 chunk 输出
             if current_chunk:
                 chunks.append({
+                    **base_metadata,
                     "chunk_id": chunk_id,
                     "text": current_chunk.strip(),
-                    "source": source,
                 })
                 chunk_id += 1
                 current_chunk = ""
@@ -60,9 +65,9 @@ def split_text(
             sub_chunks = _split_long_paragraph(para, chunk_size, chunk_overlap)
             for sub in sub_chunks:
                 chunks.append({
+                    **base_metadata,
                     "chunk_id": chunk_id,
                     "text": sub,
-                    "source": source,
                 })
                 chunk_id += 1
         else:
@@ -72,9 +77,9 @@ def split_text(
             else:
                 if current_chunk:
                     chunks.append({
+                        **base_metadata,
                         "chunk_id": chunk_id,
                         "text": current_chunk.strip(),
-                        "source": source,
                     })
                     chunk_id += 1
                 current_chunk = para
@@ -82,15 +87,15 @@ def split_text(
     # 最后一个 chunk
     if current_chunk.strip():
         chunks.append({
+            **base_metadata,
             "chunk_id": chunk_id,
             "text": current_chunk.strip(),
-            "source": source,
         })
 
     return chunks
 
 
-def _split_by_separator(text: str, separator: str) -> List[str]:
+def _split_by_separator(text: str, separator: str) -> list[str]:
     """按分隔符切分文本。"""
     parts = text.split(separator)
     return [p for p in parts if p.strip()]
@@ -98,12 +103,12 @@ def _split_by_separator(text: str, separator: str) -> List[str]:
 
 def _split_long_paragraph(
     text: str, chunk_size: int, chunk_overlap: int
-) -> List[str]:
+) -> list[str]:
     """将单个长段落切分为多个带重叠的片段。
 
     优先在标点符号处断开。
     """
-    chunks = []
+    chunks: list[str] = []
     start = 0
 
     while start < len(text):

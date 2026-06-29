@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f0f2f5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>AIGText — Chat</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/chat.css">
+</head>
+<body>
+  <div id="app">
+
+    <header id="header">
+      <h1 class="header-title">AIGText</h1>
+      <div class="header-actions">
+        <button id="new-chat-btn" class="icon-btn" title="新对话" aria-label="开始新对话">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        <span id="health-dot" class="health-dot" title="连接状态" aria-label="服务器连接状态"></span>
+      </div>
+    </header>
+
+    <div id="rag-bar">
+      <label class="rag-toggle" aria-label="RAG 检索增强">
+        <span class="rag-label">RAG</span>
+        <input type="checkbox" id="rag-switch" checked>
+        <span class="rag-slider"></span>
+      </label>
+    </div>
+
+    <main id="messages" aria-live="polite" aria-label="聊天消息">
+      <div id="empty-state" class="empty-state">
+        <div class="empty-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"></path>
+          </svg>
+        </div>
+        <h2 class="empty-title">AIGText</h2>
+        <p class="empty-subtitle">本地 LLM 聊天助手</p>
+      </div>
+    </main>
+
+    <!-- Camera thumbnail above input bar -->
+    <div id="camera-thumb" class="camera-preview-thumb hidden">
+      <img id="camera-thumb-img" alt="设备照片">
+      <button id="camera-thumb-remove" class="camera-thumb-remove" aria-label="移除照片">&times;</button>
+    </div>
+
+    <footer id="input-bar">
+      <div class="input-wrapper">
+        <textarea
+          id="message-input"
+          placeholder="输入消息..."
+          rows="1"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          aria-label="消息输入"
+        ></textarea>
+        <button id="camera-button" class="action-btn camera-btn" aria-label="拍照识别" title="拍照识别物联网设备">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </button>
+        <button id="send-button" class="action-btn" aria-label="发送" title="发送 (Enter)">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+          </svg>
+        </button>
+        <button id="stop-button" class="action-btn stop-btn hidden" aria-label="停止生成" title="停止生成">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+        </button>
+      </div>
+    </footer>
+
+    <!-- Camera Modal -->
+    <div id="camera-modal" class="camera-modal hidden" aria-hidden="true">
+      <div class="camera-modal__header">
+        <button id="camera-close" class="camera-modal__close" aria-label="关闭相机">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+        <button id="camera-flip" class="camera-modal__flip" aria-label="切换摄像头">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="1 4 1 10 7 10"></polyline>
+            <polyline points="23 20 23 14 17 14"></polyline>
+            <path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"></path>
+          </svg>
+        </button>
+      </div>
+
+      <video id="camera-video" class="camera-modal__video" autoplay playsinline muted></video>
+
+      <div class="camera-modal__controls">
+        <button id="camera-capture" class="camera-modal__capture-btn" aria-label="拍照">
+          <span class="camera-modal__capture-inner"></span>
+        </button>
+      </div>
+
+      <!-- Preview overlay -->
+      <div id="camera-preview" class="camera-modal__preview hidden">
+        <img id="camera-preview-img" class="camera-modal__preview-img" alt="拍摄预览">
+        <div class="camera-modal__preview-actions">
+          <button id="camera-retake" class="camera-modal__preview-btn camera-modal__preview-btn--retake" aria-label="重拍">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="1 4 1 10 7 10"></polyline>
+              <path d="M3.51 15a9 9 0 102.13-9.36L1 10"></path>
+            </svg>
+            <span>重拍</span>
+          </button>
+          <button id="camera-confirm" class="camera-modal__preview-btn camera-modal__preview-btn--confirm" aria-label="确认使用">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>确认</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <script src="js/common.js"></script>
+  <script src="js/chat.js"></script>
+</body>
+</html>

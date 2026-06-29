@@ -1,33 +1,64 @@
-# Python
+# ==================================================================
+# AIGText — .gitignore
+# ==================================================================
+
+# ---- Python ----
 __pycache__/
 *.py[cod]
 *.egg-info/
 dist/
 build/
+*.egg
 
-# Runtime binaries (llama.cpp — too large for git)
+# ---- Runtime binaries (llama.cpp, too large for git) ----
 bin/
 
-# Model weights (too large for git)
+# ---- Model weights (too large for git) ----
 models/lang/*.gguf
 models/vision/*.pt
 models/vision/*.bin
 models/vision/*.safetensors
+models/vision/*.pth
+models/vision/*.ckpt
+models/embedding/hub/
+models/**/.cache/
 
-# ChromaDB vector store (rebuild from documents)
+# ---- ChromaDB vector store (rebuildable from documents) ----
 data/vectorstore/
 
-# Runtime logs
+# ---- Runtime logs ----
 logs/
+*.log
 
-# Project planning
+# ---- Project planning ----
 .sisyphus/
 
-# Environment
+# ---- Environment & secrets ----
 .env
+.env.*
+!.env.example
 .venv/
 venv/
+*.secret
+*.key
 
-# OS
+# ---- Test artifacts ----
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ---- IDE ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---- OS ----
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# ---- Temp files ----
+*.tmp
+*.temp

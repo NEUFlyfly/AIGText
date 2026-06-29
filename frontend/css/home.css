@@ -1,0 +1,312 @@
+/* ==================================================================
+   AIGText — Home Page
+   Full-screen landing with glass-morphism feature cards.
+   Depends on: css/common.css (design tokens)
+   ================================================================== */
+
+/* ---- Page Background ---- */
+.home-body {
+  background: linear-gradient(168deg, #0b0b2b 0%, #1a1145 28%, #16213e 62%, #0f282e 100%);
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.home-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: var(--space-3xl) var(--space-xl) var(--space-2xl);
+  gap: var(--space-2xl);
+}
+
+/* ---- Ambient Background Layer ---- */
+.home-page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 15%, rgba(102, 126, 234, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 75%, rgba(0, 242, 254, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(118, 75, 162, 0.10) 0%, transparent 50%);
+}
+
+/* ---- Noise Texture Overlay ---- */
+.home-page::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+}
+
+/* ---- Hero / Logo Section ---- */
+.home-hero {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-xl) 0 var(--space-sm);
+}
+
+.home-logo {
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  background: var(--gradient-secondary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.home-subtitle {
+  margin-top: var(--space-sm);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-normal);
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.08em;
+}
+
+/* ---- Feature Cards Container ---- */
+.home-cards {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  flex: 1;
+}
+
+/* ---- Individual Feature Card ---- */
+.feature-card {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-normal) var(--ease-out);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Gradient accent bar (left edge) */
+.feature-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: var(--space-sm);
+  bottom: var(--space-sm);
+  width: 4px;
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+}
+
+/* Card 1 — purple gradient accent */
+.feature-card--qa::before {
+  background: var(--gradient-card-1);
+}
+
+/* Card 2 — pink/coral gradient accent */
+.feature-card--model::before {
+  background: var(--gradient-card-2);
+}
+
+/* Card 3 — cyan gradient accent */
+.feature-card--ar::before {
+  background: var(--gradient-card-3);
+}
+
+/* Press state */
+.feature-card:active {
+  transform: scale(0.98);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Card content layout */
+.feature-card__icon {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-lg) 0 var(--space-lg) var(--space-lg);
+  flex-shrink: 0;
+}
+
+.feature-card__icon svg {
+  width: 36px;
+  height: 36px;
+  opacity: 0.85;
+}
+
+.feature-card__body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--space-lg);
+  padding-left: var(--space-md);
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.feature-card__title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.feature-card__desc {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.feature-card__arrow {
+  display: flex;
+  align-items: center;
+  padding: var(--space-lg);
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0.5;
+  transition: opacity var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-out);
+}
+
+.feature-card__arrow svg {
+  width: 18px;
+  height: 18px;
+}
+
+.feature-card:active .feature-card__arrow {
+  opacity: 0.8;
+  transform: translateX(2px);
+}
+
+/* ---- Staggered Entrance Animation ---- */
+.feature-card--qa {
+  animation: fadeUp var(--duration-reveal) var(--ease-out) both;
+  animation-delay: 0ms;
+}
+
+.feature-card--model {
+  animation: fadeUp var(--duration-reveal) var(--ease-out) both;
+  animation-delay: 150ms;
+}
+
+.feature-card--ar {
+  animation: fadeUp var(--duration-reveal) var(--ease-out) both;
+  animation-delay: 300ms;
+}
+
+/* ---- Footer ---- */
+.home-footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  padding-top: var(--space-lg);
+}
+
+/* ---- Health Indicator ---- */
+.health-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: rgba(255, 255, 255, 0.45);
+  letter-spacing: 0.04em;
+}
+
+.health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent-red);
+  transition: background var(--duration-normal) var(--ease-out),
+              box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.health-dot--connected {
+  background: var(--accent-green);
+  box-shadow: 0 0 8px rgba(7, 193, 96, 0.5);
+  animation: healthPulse 2s var(--ease-in-out) infinite;
+}
+
+@keyframes healthPulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(7, 193, 96, 0.4); }
+  50%      { box-shadow: 0 0 12px rgba(7, 193, 96, 0.7); }
+}
+
+/* ---- Powered-by Badge ---- */
+.home-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-lg);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: var(--font-size-xs);
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.03em;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.home-badge__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* ---- Hero also fades in ---- */
+.home-hero {
+  animation: fadeUp var(--duration-reveal) var(--ease-out) both;
+  animation-delay: 0ms;
+}
+
+/* ---- Footer fades in last ---- */
+.home-footer {
+  animation: fadeUp var(--duration-reveal) var(--ease-out) both;
+  animation-delay: 450ms;
+}
+
+/* ---- Responsive: Slightly larger on tablet+ ---- */
+@media (min-width: 600px) {
+  .home-page {
+    padding: var(--space-3xl) var(--space-2xl) var(--space-3xl);
+  }
+
+  .home-logo {
+    font-size: 44px;
+  }
+
+  .feature-card__icon svg {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+@media (min-width: 900px) {
+  .home-page {
+    padding-top: 6vh;
+  }
+}

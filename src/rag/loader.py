@@ -7,8 +7,18 @@ RAG 模块 — 文档加载器
   - 保留文档来源元信息 (文件名、路径)
 """
 
+import hashlib
 import os
 from typing import List, Dict
+
+
+def _normalize_source(path: str) -> str:
+    return path.replace("\\", "/")
+
+
+def _legacy_doc_id(source: str) -> str:
+    source_hash = hashlib.sha1(source.encode("utf-8")).hexdigest()[:12]
+    return f"legacy_{source_hash}"
 
 
 def load_documents(directory: str) -> List[Dict[str, str]]:
@@ -18,7 +28,7 @@ def load_documents(directory: str) -> List[Dict[str, str]]:
         directory: 文档目录路径
 
     Returns:
-        [{"source": "filename.txt", "content": "全文内容..."}, ...]
+        [{"source": "filename.txt", "content": "全文内容...", ...metadata}, ...]
     """
     docs: List[Dict[str, str]] = []
 
@@ -37,6 +47,14 @@ def load_documents(directory: str) -> List[Dict[str, str]]:
             continue
 
         if content.strip():
-            docs.append({"source": filename, "content": content})
+            source = _normalize_source(filename)
+            docs.append({
+                "doc_id": _legacy_doc_id(source),
+                "coarse_category": "legacy",
+                "sub_category": "legacy",
+                "asset_type": "text",
+                "source": source,
+                "content": content,
+            })
 
     return docs
