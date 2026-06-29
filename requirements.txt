@@ -4,6 +4,9 @@
 # --- 核心 (已内置) ---
 # (标准库, 无需安装)
 #
+# --- 测试 ---
+pytest>=8.0
+
 # --- RAG 检索增强 ---
 chromadb>=1.5                    # 向量数据库
 sentence-transformers>=5.0       # embedding 模型
@@ -14,7 +17,7 @@ sentence-transformers>=5.0       # embedding 模型
 # --- 电脑B: 视觉服务 ---
 # torch              # PyTorch (视觉模型推理)
 # torchvision        # 图像预处理 + 预训练模型
-# pillow             # 图像读取
+pillow>=10.0                     # 图像读取
 #
 # === 可选 ===
 # opencv-python      # 更强大的图像处理 (如果 torchvision 不够用)

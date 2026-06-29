@@ -1,0 +1,38 @@
+[
+  {
+    "doc_id": "fixture_temp_sensor",
+    "coarse_category": "智能传感器",
+    "sub_category": "温湿度传感器",
+    "aliases": [
+      "温湿度探头",
+      "环境温湿度传感器"
+    ],
+    "description": "用于采集室内温度与相对湿度的智能传感器 fixture 分类。",
+    "image_dir": "tests/fixtures/iot_knowledge/智能传感器/温湿度传感器/images",
+    "document_path": "tests/fixtures/iot_knowledge/智能传感器/温湿度传感器/document.md"
+  },
+  {
+    "doc_id": "fixture_pir_sensor",
+    "coarse_category": "智能传感器",
+    "sub_category": "人体红外传感器",
+    "aliases": [
+      "PIR 传感器",
+      "人体感应器"
+    ],
+    "description": "用于检测人体移动与存在状态的被动红外传感器 fixture 分类。",
+    "image_dir": "tests/fixtures/iot_knowledge/智能传感器/人体红外传感器/images",
+    "document_path": "tests/fixtures/iot_knowledge/智能传感器/人体红外传感器/document.md"
+  },
+  {
+    "doc_id": "fixture_ptz_camera",
+    "coarse_category": "智能摄像头",
+    "sub_category": "室内云台摄像头",
+    "aliases": [
+      "PTZ 室内摄像头",
+      "云台监控摄像机"
+    ],
+    "description": "用于室内旋转巡航、视频看护与移动追踪的云台摄像头 fixture 分类。",
+    "image_dir": "tests/fixtures/iot_knowledge/智能摄像头/室内云台摄像头/images",
+    "document_path": "tests/fixtures/iot_knowledge/智能摄像头/室内云台摄像头/document.md"
+  }
+]
