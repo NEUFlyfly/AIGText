@@ -149,7 +149,7 @@ kill_old_processes
 echo "[docs] 生成 IoT 知识文档..."
 mkdir -p "$LOG_DIR"
 cd "$REPO_ROOT"
-"$PYTHON" scripts/generate_iot_docs.py
+"$PYTHON" src/rag/generate_iot_docs.py
 echo ""
 
 # =============================================================

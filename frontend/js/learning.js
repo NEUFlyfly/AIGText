@@ -1,12 +1,10 @@
 /**
  * AIGText — Learning Report
  * Analytics dashboard: weekly stats, device distribution, daily trends, recent conversations.
- * Data source: localStorage (client-side message history).
+ * Data source: Server API (SQLite database).
  */
 (function () {
   "use strict";
-
-  const STORAGE_KEY = "aigtext_messages";
 
   const dom = {
     backBtn:      document.getElementById("back-btn"),
@@ -26,36 +24,66 @@
   dom.reviewBtn.addEventListener("click", function () { Nav.go("chat.html"); });
   loadData();
 
-  function loadData() {
-    var messages = loadMessages();
-    if (!messages || messages.length === 0) {
-      showEmptyState();
-      return;
-    }
-    analyze(messages);
-  }
-
-  function loadMessages() {
+  async function loadData() {
     try {
-      // Try new format first
-      var raw = localStorage.getItem("aigtext_chat_state_v2");
-      if (raw) {
-        var data = JSON.parse(raw);
-        if (data.messages && data.messages.length) return data.messages;
+      // 从服务器获取所有对话
+      const resp = await fetch("/api/conversations");
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const conversations = await resp.json();
+      
+      if (!conversations || conversations.length === 0) {
+        showEmptyState();
+        return;
       }
-      // Fall back to old format
-      raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return [];
-      return JSON.parse(raw);
+      
+      // 获取每个对话的消息
+      const allMessages = [];
+      for (const conv of conversations) {
+        try {
+          const convResp = await fetch("/api/conversations/" + conv.id);
+          if (convResp.ok) {
+            const convData = await convResp.json();
+            if (convData.messages) {
+              // 添加对话 ID 和时间戳
+              convData.messages.forEach(m => {
+                m.conversationId = conv.id;
+                if (!m.timestamp && m.created_at) {
+                  m.timestamp = new Date(m.created_at).getTime();
+                }
+              });
+              allMessages.push(...convData.messages);
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to load conversation:", conv.id, e);
+        }
+      }
+      
+      if (allMessages.length === 0) {
+        showEmptyState();
+        return;
+      }
+      
+      analyze(allMessages);
     } catch (e) {
-      console.error("Failed to load messages:", e);
-      return [];
+      console.error("Failed to load data:", e);
+      showEmptyState();
     }
   }
 
   function showEmptyState() {
     dom.statsGrid.style.display = "none";
+    document.querySelector(".charts-section:nth-of-type(1)").style.display = "none";
+    document.querySelector(".charts-section:nth-of-type(2)").style.display = "none";
+    document.querySelector(".recent-section").style.display = "none";
     dom.emptyState.classList.remove("hidden");
+  }
+
+  // 判断是否为识别失败的回复
+  function isVisionFailure(content) {
+    if (!content) return true;
+    const s = content.trim();
+    return !s || s === "识别失败" || s.startsWith("识别失败") || s === "识别失败:";
   }
 
   // ── Analysis ──
@@ -65,53 +93,88 @@
     weekStart.setDate(now.getDate() - now.getDay());
     weekStart.setHours(0, 0, 0, 0);
 
-    const visionMessages = [];
+    // 从数据库返回的消息中找出视觉识别对
+    // 数据库消息格式: {id, role, content, image_data, created_at}
+    const visionPairs = [];  // {userMsg, assistantMsg, timestamp, content, imageData}
     const categoryCount = {};
     const dailyCount = {};
     const studyDays = new Set();
 
-    messages.forEach(function (msg) {
-      // Match both new (metadata.type === "vision_result") and legacy (isVision === true)
-      var isVisionMsg = (msg.metadata && (msg.metadata.type === "vision_result" ||
-                          msg.metadata.type === "vision" ||
-                          (msg.metadata.visual_candidates && msg.metadata.visual_candidates.length)));
-
-      if (!isVisionMsg && !msg.isVision) return;
-      if (msg.role !== "assistant") return;
-
-      visionMessages.push(msg);
-
-      const d = new Date(msg.timestamp || now);
-      const dayKey = d.toISOString().slice(0, 10);
+    // 遍历消息，找到图片+回复的配对
+    // 策略1: 用户消息有 image_data + 下一条是助手回复
+    // 策略2: 助手回复包含 "**设备**" 格式（即使没有 image_data）
+    for (let i = 0; i < messages.length - 1; i++) {
+      const msg = messages[i];
+      const nextMsg = messages[i + 1];
       
-      // Within this week?
-      if (d >= weekStart) {
-        // Extract category from metadata (new) or legacy fields
-        var catName = (msg.metadata && msg.metadata.visual_candidates &&
-                       msg.metadata.visual_candidates[0] &&
-                       msg.metadata.visual_candidates[0].sub_category) ||
-                      (msg.metadata && msg.metadata.visual_candidates &&
-                       msg.metadata.visual_candidates[0] &&
-                       msg.metadata.visual_candidates[0].coarse_category) ||
-                      msg.coarseCategory ||
-                      msg.subCategory ||
-                      extractCategoryFromContent(msg.content);
-        if (catName) {
-          categoryCount[catName] = (categoryCount[catName] || 0) + 1;
-        }
-        dailyCount[dayKey] = (dailyCount[dayKey] || 0) + 1;
-        studyDays.add(dayKey);
-      }
-    });
+      // 策略1: 有 image_data（且非识别失败）
+      if (msg.role === "user" && msg.image_data && nextMsg.role === "assistant") {
+        if (isVisionFailure(nextMsg.content)) { i++; continue; }
+        const pair = {
+          userMsg: msg,
+          assistantMsg: nextMsg,
+          timestamp: msg.created_at ? new Date(msg.created_at).getTime() : now.getTime(),
+          content: nextMsg.content,
+          imageData: msg.image_data,
+        };
+        visionPairs.push(pair);
 
-    if (visionMessages.length === 0) {
+        const d = new Date(pair.timestamp);
+        const dayKey = d.toISOString().slice(0, 10);
+        
+        if (d >= weekStart) {
+          const catName = extractCategoryFromContent(nextMsg.content);
+          if (catName) {
+            categoryCount[catName] = (categoryCount[catName] || 0) + 1;
+          }
+          dailyCount[dayKey] = (dailyCount[dayKey] || 0) + 1;
+          studyDays.add(dayKey);
+        }
+        continue; // 跳过策略2
+      }
+      
+      // 策略2: 助手回复包含 **设备** 或视觉识别特征（且非识别失败）
+      if (msg.role === "user" && nextMsg.role === "assistant") {
+        if (isVisionFailure(nextMsg.content)) { i++; continue; }
+        const content = nextMsg.content || "";
+        const hasVisionMarker = content.indexOf("**设备**") !== -1 ||
+                                content.indexOf("**Device**") !== -1 ||
+                                content.indexOf("视觉分数") !== -1 ||
+                                content.indexOf("visual score") !== -1;
+        
+        if (hasVisionMarker) {
+          const pair = {
+            userMsg: msg,
+            assistantMsg: nextMsg,
+            timestamp: msg.created_at ? new Date(msg.created_at).getTime() : now.getTime(),
+            content: content,
+            imageData: msg.image_data || msg.image_url || null,
+          };
+          visionPairs.push(pair);
+
+          const d = new Date(pair.timestamp);
+          const dayKey = d.toISOString().slice(0, 10);
+          
+          if (d >= weekStart) {
+            const catName = extractCategoryFromContent(content);
+            if (catName) {
+              categoryCount[catName] = (categoryCount[catName] || 0) + 1;
+            }
+            dailyCount[dayKey] = (dailyCount[dayKey] || 0) + 1;
+            studyDays.add(dayKey);
+          }
+        }
+      }
+    }
+
+    if (visionPairs.length === 0) {
       showEmptyState();
       return;
     }
 
     // Stats
-    const weekCount = visionMessages.filter(function (m) {
-      return new Date(m.timestamp || now) >= weekStart;
+    const weekCount = visionPairs.filter(function (p) {
+      return new Date(p.timestamp) >= weekStart;
     }).length;
     dom.statCount.textContent = weekCount;
 
@@ -129,20 +192,47 @@
     renderDailyChart(dailyCount, now);
 
     // Recent vision conversations
-    renderRecentList(visionMessages);
+    renderRecentList(visionPairs);
   }
 
   function extractCategoryFromContent(content) {
     if (!content) return null;
-    const keywords = [
-      "Arduino", "Raspberry", "ESP32", "ESP8266", "Jetson",
-      "STM32", "FPGA", "超声波", "温湿度", "陀螺仪", "摄像头"
-    ];
-    for (var i = 0; i < keywords.length; i++) {
-      if (content.indexOf(keywords[i]) !== -1) {
-        return keywords[i] + " 系列";
+    
+    // 先尝试从 "**设备**: xxx" 格式提取
+    const deviceMatch = content.match(/\*\*设备\*\*[：:]\s*([^\n]+)/);
+    if (deviceMatch) {
+      return deviceMatch[1].trim();
+    }
+    
+    // 再尝试从 "Device:" 格式提取
+    const devMatch = content.match(/Device:\s*([^\n]+)/i);
+    if (devMatch) {
+      return devMatch[1].trim();
+    }
+    
+    // 从第一行提取（如果是设备名）
+    const lines = content.split('\n');
+    if (lines.length > 0 && lines[0].trim()) {
+      const firstLine = lines[0].trim();
+      // 如果第一行不长且可能是设备名
+      if (firstLine.length < 50 && !firstLine.includes('根据') && !firstLine.includes('图片')) {
+        // 移除 markdown 格式
+        return firstLine.replace(/\*\*/g, '').replace(/#/g, '').trim();
       }
     }
+    
+    // 关键词兜底
+    const keywords = [
+      "Arduino", "Raspberry", "ESP32", "ESP8266", "Jetson",
+      "STM32", "FPGA", "超声波", "温湿度", "陀螺仪", "摄像头",
+      "motor", "sensor", "camera", "LED", "relay"
+    ];
+    for (var i = 0; i < keywords.length; i++) {
+      if (content.toLowerCase().indexOf(keywords[i].toLowerCase()) !== -1) {
+        return keywords[i] + " 相关设备";
+      }
+    }
+    
     return null;
   }
 
@@ -242,9 +332,9 @@
   }
 
   // ── Recent Vision Conversations ──
-  function renderRecentList(messages) {
+  function renderRecentList(pairs) {
     // Show last 5 vision results, sorted by timestamp desc
-    const sorted = messages.slice().sort(function (a, b) {
+    const sorted = pairs.slice().sort(function (a, b) {
       return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
     }).slice(0, 5);
 
@@ -253,14 +343,17 @@
       return;
     }
 
-    dom.recentList.innerHTML = sorted.map(function (msg) {
-      const device = msg.subCategory || msg.coarseCategory || "未知设备";
-      const ts = msg.timestamp ? formatTime(new Date(msg.timestamp)) : "未知时间";
-      const preview = msg.content ? truncate(msg.content, 30) : "";
+    dom.recentList.innerHTML = sorted.map(function (pair) {
+      const device = extractCategoryFromContent(pair.content) || "未知设备";
+      const ts = pair.timestamp ? formatTime(new Date(pair.timestamp)) : "未知时间";
+      const preview = pair.content ? truncate(pair.content, 30) : "";
+      const hasImage = !!pair.imageData;
 
       return '<div class="recent-item">'
         + '<div class="recent-item__icon">'
-        + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>'
+        + (hasImage
+          ? '<img src="' + pair.imageData + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">'
+          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>')
         + '</div>'
         + '<div class="recent-item__body">'
         + '<div class="recent-item__title">' + escapeHtml(device) + '</div>'

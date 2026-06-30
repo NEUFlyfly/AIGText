@@ -51,6 +51,38 @@
     return div.innerHTML;
   }
 
+  // 切分原始文本为 { think, answer }：
+  // - 有完整 <think>...</think> 时，提取两段
+  // - 流式场景只有 <think> 未闭合时，把已累积部分当 think、answer 为空
+  // - 完全没有 <think> 标签时，整段当作 answer
+  function splitThinkAnswer(raw) {
+    const trimmed = (raw || "").trim();
+    if (!trimmed) return { think: "", answer: "" };
+
+    const startIdx = trimmed.indexOf("<think>");
+    if (startIdx === -1) {
+      // 没有 think 标签，整段作 answer
+      return { think: "", answer: trimmed };
+    }
+
+    const afterStart = trimmed.indexOf(">", startIdx);
+    if (afterStart === -1) {
+      // "<think>" 还没闭合（流式中），整段视作 think
+      return { think: trimmed.slice(startIdx + 6).trim(), answer: "" };
+    }
+    const bodyStart = afterStart + 1;
+
+    const endIdx = trimmed.indexOf("</think>");
+    if (endIdx === -1) {
+      // 开始标签已闭合，但结束标签未到 —— 流式中
+      return { think: trimmed.slice(bodyStart, endIdx).trim(), answer: "" };
+    }
+
+    const thinkBody = trimmed.slice(bodyStart, endIdx).trim();
+    const answerBody = trimmed.slice(endIdx + 10).trim(); // "</think>".length = 10
+    return { think: thinkBody, answer: answerBody };
+  }
+
   function formatMd(text) {
     if (!text) return "";
     let html = text
@@ -60,9 +92,30 @@
       .replace(/```[\s\S]*?```/g, match => `<pre><code>${match.slice(3, -3)}</code></pre>`)
       .replace(/`([^`]+)`/g, "<code>$1</code>")
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+      .replace(/\*([^*]*)\*/g, "<em>$1</em>")
       .replace(/\n/g, "<br>");
-    return "<p>" + html + "</p>";
+    return html;
+  }
+
+  function renderAnswerBubble(raw) {
+    // 切分 think/answer；answer 为空时降级显示 think 本体
+    const { think, answer } = splitThinkAnswer(raw);
+    const answerFallback = answer ? answer : (think ? "(等待回答部分…)" : "");
+    return "" +
+      (think
+        ? "<div class='think-block'>" +
+            "<details open>" +
+              "<summary class='think-summary'><span class='think-icon'>💭</span><span class='think-label'>思考过程</span></summary>" +
+              "<div class='think-content'>" + formatMd(think) + "</div>" +
+            "</details>" +
+          "</div>"
+        : "") +
+      "<div class='answer-block'>" + formatMd(answerFallback) + "</div>";
+  }
+
+  // 头像 emoji
+  function avatarEmoji(role) {
+    return role === "user" ? "🧑" : role === "assistant" ? "🤖" : "";
   }
 
   function hideEmpty() {
@@ -84,7 +137,14 @@
     const div = document.createElement("div");
     div.className = "message message--" + role;
     const imageHtml = imageUrl ? `<img class="message__user-image" src="${imageUrl}">` : "";
+
+    // user/assistant 加头像；system/error 不加
+    const avatarHtml = (role === "user" || role === "assistant")
+      ? `<div class="message__avatar message__avatar--${role}">${avatarEmoji(role)}</div>`
+      : "";
+
     div.innerHTML =
+      avatarHtml +
       "<div class='message__bubble'>" +
       imageHtml +
       "<div class='message__content'>" + formatMd(content) + "</div>" +
@@ -110,6 +170,9 @@
     const text = dom.input.value.trim();
     if (!text && !state.pendingPhoto) return;
 
+    // 确保有对话 ID（懒创建）
+    await ensureConversation();
+
     // 用户消息气泡（如果有图片，传入图片URL）
     let image_data = null;
     if (state.pendingPhoto) {
@@ -130,7 +193,6 @@
       // 纯文本聊天
       streamChat(text);
     }
-    saveConversation();
   }
 
   async function streamChat(userText) {
@@ -177,25 +239,25 @@
             const delta = obj.choices?.[0]?.delta?.content || "";
             if (delta) {
               fullReply += delta;
-              aiEl.innerHTML = formatMd(fullReply);
+      aiEl.innerHTML = renderAnswerBubble(fullReply);
               scrollToBottom();
             }
           } catch (e) {}
         }
       }
 
-      if (!fullReply) aiEl.innerHTML = formatMd("(无回复)");
+      if (!fullReply) aiEl.innerHTML = renderAnswerBubble("(无回复)");
     } catch (err) {
       if (err.name !== "AbortError") {
         aiEl.innerHTML = formatMd("发送失败: " + err.message);
       }
-    } finally {
-      state.messages.push({ role: "assistant", content: fullReply, timestamp: Date.now() });
-      setStreaming(false);
-      state.abortController = null;
-      saveConversation();
-    }
+  } finally {
+    state.messages.push({ role: "assistant", content: fullReply, timestamp: Date.now() });
+    setStreaming(false);
+    state.abortController = null;
+    if (state.messages.length > 0) saveConversation();
   }
+}
 
   async function sendVision(blob, question) {
     setStreaming(true);
@@ -227,7 +289,7 @@
       aiEl.innerHTML = formatMd("识别失败: " + err.message);
     } finally {
       setStreaming(false);
-      saveConversation();
+      if (state.messages.length > 0) saveConversation();
     }
   }
 
@@ -314,13 +376,7 @@
     dom.messages.innerHTML = "";
     dom.emptyState.style.display = "flex";
     closeSidebar();
-    const resp = await fetch("/api/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "新对话" }),
-    });
-    const data = await resp.json();
-    state.conversationId = data.id;
+    // 不自动创建对话，等待用户发送消息时再创建
   }
 
   async function loadConversations() {
@@ -366,9 +422,9 @@
     } catch (e) {}
   }
 
-  // 初始化
-  async function init() {
-    // 自动创建/加载对话
+  // 确保有对话 ID（懒创建）
+  async function ensureConversation() {
+    if (state.conversationId) return;
     const resp = await fetch("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -376,6 +432,12 @@
     });
     const data = await resp.json();
     state.conversationId = data.id;
+  }
+
+  async function init() {
+    // 不自动创建对话，等待用户发送消息时再创建
+    state.conversationId = null;
+    state.messages = [];
   }
 
   if (document.readyState === "loading") {

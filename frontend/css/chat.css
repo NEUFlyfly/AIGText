@@ -300,8 +300,32 @@ body::after {
 /* ---- Message bubbles ---- */
 .message {
   display: flex;
-  max-width: 80%;
+  max-width: 85%;
   animation: msgIn 0.3s ease;
+  gap: 10px;
+}
+
+/* ── 头像（微信风格 emoji）── */
+.message__avatar {
+  flex-shrink: 0;
+  align-self: flex-start;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  user-select: none;
+  font-size: 22px;
+  line-height: 38px;
+}
+.message__avatar--user {
+  background: #e8e8e8;
+}
+.message__avatar--assistant {
+  background: linear-gradient(135deg, #576b95, #9eb2d4);
 }
 .message--user {
   align-self: flex-end;
@@ -332,6 +356,75 @@ body::after {
 }
 .message__content p { margin: 4px 0; }
 .message__content p:first-child { margin-top: 0; }
+.message__content p:last-child { margin-bottom: 0; }
+
+/* ── 思考过程（Think block）── */
+.think-block {
+  margin: 0 0 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, #fafbff 0%, #f3f4fa 100%);
+  overflow: hidden;
+}
+.think-block details {
+  display: flex;
+  flex-direction: column;
+}
+.think-block details[open] > .think-summary::after {
+  content: "▾";
+}
+.think-block details > .think-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-blue);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.think-block details > .think-summary::-webkit-details-marker { display: none; }
+.think-summary::after {
+  content: "▸";
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+.think-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+.think-label { line-height: 1; }
+.think-content {
+  padding: 2px 12px 10px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  border-top: 1px dashed var(--border-light);
+  white-space: normal;
+}
+.think-content p { margin: 2px 0; color: var(--text-secondary); }
+.think-content code {
+  font-family: "SF Mono", Consolas, "Courier New", monospace;
+  font-size: 12px;
+  background: rgba(87, 107, 149, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* ── 正式回答（Answer block） ── */
+.answer-block {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+.answer-block p { margin: 4px 0; }
+.answer-block p:first-child { margin-top: 0; }
+.answer-block p:last-child { margin-bottom: 0; }
 .message__content p:last-child { margin-bottom: 0; }
 
 /* User message — inline image preview (豆包风格) */

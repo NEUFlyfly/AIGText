@@ -7,9 +7,9 @@ RAG 模块 — 问答管线编排器
   - 将检索结果格式化为模型可理解的上下文
 """
 
-import os
 from typing import TypeAlias
 
+from ..prompt_loader import load_prompt
 from .embedder import Embedder
 from .store import VectorStore
 from .retriever import MetadataFilter, QueryEmbedder, Retriever, SearchResult, SearchStore
@@ -18,12 +18,8 @@ from .retriever import MetadataFilter, QueryEmbedder, Retriever, SearchResult, S
 Chunk: TypeAlias = dict[str, str | int | float]
 
 
-# prompt 模板文件路径
-_PROMPT_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "prompt",
-)
-_RAG_PROMPT_FILE = os.path.join(_PROMPT_DIR, "rag_prompt.txt")
+# RAG 模板名 — 对应 prompt/rag_prompt.txt
+_RAG_PROMPT_NAME = "rag_prompt"
 
 
 class RAGPipeline:
@@ -47,25 +43,11 @@ class RAGPipeline:
         self._retriever: Retriever | None = None
         self._top_k = top_k
         self._min_score = min_score
-        self._prompt_template = self._load_prompt_template()
+        self._prompt_template = load_prompt(_RAG_PROMPT_NAME)
 
     # ------------------------------------------------------------------
     # 初始化
     # ------------------------------------------------------------------
-
-    def _load_prompt_template(self) -> str:
-        """从 prompt/rag_prompt.txt 加载模板，不存在则使用默认模板。"""
-        try:
-            with open(_RAG_PROMPT_FILE, "r", encoding="utf-8") as f:
-                return f.read()
-        except FileNotFoundError:
-            return (
-                "参考资料：\n"
-                "{context}\n\n"
-                "用户问题：{query}\n\n"
-                "请基于以上参考资料回答问题。"
-                "如果资料中没有相关信息，请如实说明。"
-            )
 
     def _ensure_embedder(self) -> QueryEmbedder:
         if self._embedder is None:

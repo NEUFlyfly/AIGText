@@ -365,46 +365,94 @@
             }
           }
           
-          // 构建展示 HTML
+          // 构建展示 HTML（带图标和美化）
           var html = "";
+          
+          // 分类信息卡片
           if (info.category) {
-            html += '<div class="graph-detail-info__section">';
-            html += '<span class="graph-detail-info__label">分类</span>';
-            html += '<span>' + info.category + '</span>';
+            html += '<div class="graph-detail-info-card graph-detail-info-card--category">';
+            html += '<div class="graph-detail-info-card__header">';
+            html += '<svg class="graph-detail-info-card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+            html += '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>';
+            html += '</svg>';
+            html += '<span class="graph-detail-info-card__label">分类</span>';
             html += '</div>';
-          }
-          if (info.alsoKnownAs) {
-            html += '<div class="graph-detail-info__section">';
-            html += '<span class="graph-detail-info__label">别名</span>';
-            html += '<span>' + info.alsoKnownAs + '</span>';
+            html += '<div class="graph-detail-info-card__content">';
+            html += '<span class="graph-detail-info-card__value">' + info.category + '</span>';
             html += '</div>';
-          }
-          if (info.description) {
-            html += '<div class="graph-detail-info__section">';
-            html += '<span class="graph-detail-info__label">描述</span>';
-            html += '<p>' + info.description.replace(/\n/g, "<br>") + '</p>';
             html += '</div>';
           }
           
-          dom.detailDesc.innerHTML = html || "暂无描述";
+          // 别名信息卡片
+          if (info.alsoKnownAs) {
+            html += '<div class="graph-detail-info-card graph-detail-info-card--alias">';
+            html += '<div class="graph-detail-info-card__header">';
+            html += '<svg class="graph-detail-info-card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+            html += '<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>';
+            html += '<circle cx="8.5" cy="7" r="4"></circle>';
+            html += '<line x1="20" y1="8" x2="20" y2="14"></line>';
+            html += '<line x1="23" y1="11" x2="17" y2="11"></line>';
+            html += '</svg>';
+            html += '<span class="graph-detail-info-card__label">别名</span>';
+            html += '</div>';
+            html += '<div class="graph-detail-info-card__content">';
+            // 把逗号分隔的别名做成标签
+            var aliases = info.alsoKnownAs.split(",").map(function(a) { return a.trim(); });
+            aliases.forEach(function(alias, idx) {
+              html += '<span class="graph-detail-tag">' + alias + '</span>';
+              if (idx < aliases.length - 1) html += " ";
+            });
+            html += '</div>';
+            html += '</div>';
+          }
+          
+          // 描述信息卡片
+          if (info.description) {
+            html += '<div class="graph-detail-info-card graph-detail-info-card--desc">';
+            html += '<div class="graph-detail-info-card__header">';
+            html += '<svg class="graph-detail-info-card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+            html += '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>';
+            html += '<polyline points="14 2 14 8 20 8"></polyline>';
+            html += '<line x1="16" y1="13" x2="8" y2="13"></line>';
+            html += '<line x1="16" y1="17" x2="8" y2="17"></line>';
+            html += '<polyline points="10 9 9 9 8 9"></polyline>';
+            html += '</svg>';
+            html += '<span class="graph-detail-info-card__label">描述</span>';
+            html += '</div>';
+            html += '<div class="graph-detail-info-card__content">';
+            html += '<p class="graph-detail-desc-text">' + info.description.replace(/\n/g, "<br>") + '</p>';
+            html += '</div>';
+            html += '</div>';
+          }
+          
+          dom.detailDesc.innerHTML = html || '<div class="graph-detail-empty">暂无描述</div>';
         })
         .catch(function () {
-          dom.detailDesc.textContent = n.desc || "暂无描述";
+          dom.detailDesc.innerHTML = '<div class="graph-detail-empty">加载失败</div>';
         });
     } else {
       // 根节点 / 大类
-      var html = '<div class="graph-detail-info__section">';
+      var html = '<div class="graph-detail-info-card">';
+      html += '<div class="graph-detail-info-card__header">';
+      html += '<svg class="graph-detail-info-card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+      html += '<circle cx="12" cy="12" r="10"></circle>';
+      html += '<line x1="12" y1="16" x2="12" y2="12"></line>';
+      html += '<line x1="12" y1="8" x2="12.01" y2="8"></line>';
+      html += '</svg>';
+      html += '<span class="graph-detail-info-card__label">说明</span>';
+      html += '</div>';
+      html += '<div class="graph-detail-info-card__content">';
       if (n.level === "coarse") {
-        html += '<span class="graph-detail-info__label">说明</span>';
-        html += '<p>该大类下包含若干具体型号，请点击具体型号查看详情。</p>';
+        html += '<p class="graph-detail-desc-text">该大类下包含若干具体型号，请点击具体型号查看详情。</p>';
       } else {
-        html += '<span class="graph-detail-info__label">说明</span>';
-        html += '<p>物联网设备知识图谱，涵盖常见的硬件开发平台和传感器。</p>';
+        html += '<p class="graph-detail-desc-text">物联网设备知识图谱，涵盖常见的硬件开发平台和传感器。</p>';
       }
+      html += '</div>';
       html += '</div>';
       dom.detailDesc.innerHTML = html;
     }
 
+    // 关联节点列表
     var html = "";
     if (n.level === "root" && S.root.children) {
       html += '<p class="graph-detail-rel__title">' + S.root.children.length + ' 个设备大类</p>';

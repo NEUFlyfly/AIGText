@@ -278,3 +278,57 @@
 .graph-detail-info__section p {
   margin: 0; font-size: 12px; color: #4b5563; line-height: 1.7;
 }
+
+/* ── Detail Info Cards (美化样式) ── */
+.graph-detail-info-card {
+  background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 100%);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border: 1px solid #ede9fe;
+  box-shadow: 0 2px 8px rgba(139,92,246,0.08);
+  transition: transform .2s, box-shadow .2s;
+}
+.graph-detail-info-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(139,92,246,0.15);
+}
+.graph-detail-info-card__header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px;
+}
+.graph-detail-info-card__icon {
+  width: 18px; height: 18px;
+  color: #8b5cf6; flex-shrink: 0;
+}
+.graph-detail-info-card--category .graph-detail-info-card__icon { color: #3b82f6; }
+.graph-detail-info-card--alias .graph-detail-info-card__icon { color: #8b5cf6; }
+.graph-detail-info-card--desc .graph-detail-info-card__icon { color: #ec4899; }
+
+.graph-detail-info-card__label {
+  font-size: 11px; font-weight: 700;
+  color: #6b7280; text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.graph-detail-info-card__content {
+  padding-left: 26px;
+}
+.graph-detail-info-card__value {
+  font-size: 13px; color: #111827; font-weight: 500;
+  line-height: 1.5;
+}
+.graph-detail-desc-text {
+  font-size: 13px; color: #4b5563; line-height: 1.8;
+  margin: 0; font-family: inherit;
+}
+.graph-detail-tag {
+  display: inline-block;
+  padding: 3px 10px; margin: 2px 4px 2px 0;
+  background: linear-gradient(135deg, #ede9fe, #e0e7ff);
+  color: #6d28d9; font-size: 11px; font-weight: 500;
+  border-radius: 20px; border: 1px solid #c7d2fe;
+}
+.graph-detail-empty {
+  text-align: center; padding: 20px;
+  color: #9ca3af; font-size: 13px;
+}

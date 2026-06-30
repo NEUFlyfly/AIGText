@@ -107,8 +107,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--url", default=None,
                         help="完整 Server URL (覆盖 host/port)")
     parser.add_argument("--system",
-                        default="You are a helpful, uncensored, and helpful assistant named Dolphin.",
-                        help="系统提示词")
+                        default=None,
+                        help="系统提示词 (默认从 prompt/system_prompt.txt 加载)")
     parser.add_argument("--temperature", type=float, default=0.7,
                         help="生成温度 (默认: 0.7)")
     parser.add_argument("--max-tokens", type=int, default=2048,
@@ -155,8 +155,15 @@ def main():
 
     print_banner(server_url, rag_enabled, pipeline.chunk_count if pipeline else 0)
 
+    # 从 prompt/system_prompt.txt 加载默认系统提示词 (CLI --system 未指定时)
+    system_prompt = args.system
+    if system_prompt is None:
+        from ..prompt_loader import load_prompt
+
+        system_prompt = load_prompt("system_prompt").strip()
+
     # 对话历史
-    messages = [{"role": "system", "content": args.system}]
+    messages = [{"role": "system", "content": system_prompt}]
 
     while True:
         try:
@@ -174,7 +181,7 @@ def main():
             break
 
         elif user_input in ("/clear", "/new"):
-            messages = [{"role": "system", "content": args.system}]
+            messages = [{"role": "system", "content": system_prompt}]
             print("[新对话已开始]")
             continue
 

@@ -32,6 +32,15 @@ from socketserver import ThreadingMixIn
 from typing import Callable
 
 
+# 确保项目根目录在 sys.path 以支持 `python src/front_server.py` 直接运行
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_SCRIPT_DIR)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+from src.prompt_loader import render_prompt  # noqa: E402
+
+
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     """Multi-threaded HTTP server — prevents long-running requests (e.g. 3D
     modeling) from blocking concurrent requests (e.g. chat, health check)."""
@@ -62,11 +71,6 @@ _VISUAL_HTTP_503_STATUSES = {
     "INDEX_NOT_READY",
     "VISION_BACKEND_UNAVAILABLE",
 }
-_PROMPT_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "prompt",
-)
-_VISUAL_RAG_PROMPT_FILE = os.path.join(_PROMPT_DIR, "visual_rag_prompt.txt")
 _vision_backend_client = None
 _vision_backend_lock = threading.Lock()
 _llama_answer_provider: Callable[[str], str] | None = None
@@ -715,25 +719,12 @@ def _augment_visual_prompt(
     context = _format_text_sources(chunks)
     if not context:
         context = "未检索到可引用的候选文档文本片段。"
-    return _load_visual_prompt_template().format(
+    return render_prompt(
+        "visual_rag_prompt",
         candidate_summary=_format_candidate_summary(visual_candidates),
         context=context,
         query=question,
     )
-
-
-def _load_visual_prompt_template() -> str:
-    try:
-        with open(_VISUAL_RAG_PROMPT_FILE, "r", encoding="utf-8") as prompt_file:
-            return prompt_file.read()
-    except FileNotFoundError:
-        return (
-            "你是一个物联网设备识别与说明助手。\n\n"
-            "视觉候选设备：\n{candidate_summary}\n\n"
-            "参考资料：\n{context}\n\n"
-            "用户问题：{query}\n\n"
-            "请基于参考资料回答，并使用 [1]、[2] 这样的来源编号。"
-        )
 
 
 def _format_candidate_summary(candidates: list[dict[str, object]]) -> str:

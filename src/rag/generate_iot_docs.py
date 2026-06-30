@@ -79,7 +79,7 @@ def generate_documents(taxonomy_path: Path, output_dir: Path) -> int:
 
 
 def main():
-    os.chdir(Path(__file__).resolve().parent.parent)
+    os.chdir(Path(__file__).resolve().parent.parent.parent)
 
     print("=" * 60)
     print("  IoT Knowledge Document Generator")
