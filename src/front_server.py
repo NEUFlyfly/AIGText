@@ -237,6 +237,7 @@ class FrontendHandler(SimpleHTTPRequestHandler):
 
         # ---- RAG 检索增强 ----
         rag_enabled = self.headers.get("X-RAG-Enabled", "").lower() == "true"
+        voice_mode = payload.get("voice_mode", False)
         augmented = False
         if rag_enabled:
             pipeline = _get_rag_pipeline()
@@ -253,7 +254,9 @@ class FrontendHandler(SimpleHTTPRequestHandler):
                         user_query = messages[user_idx].get("content", "")
                         chunks = pipeline.retrieve(user_query)
                         if chunks:
-                            augmented_text = pipeline.augment(user_query, chunks)
+                            # 语音模式使用 voice_prompt 模板（无 CoT，简洁口语）
+                            augment_kwargs = {"prompt_name": "voice_prompt"} if voice_mode else {}
+                            augmented_text = pipeline.augment(user_query, chunks, **augment_kwargs)
                             messages[user_idx] = {
                                 "role": "user",
                                 "content": augmented_text,
@@ -274,6 +277,23 @@ class FrontendHandler(SimpleHTTPRequestHandler):
                 sys.stderr.write(
                     f"[{self.log_date_time_string()}] [RAG] 向量库未就绪，请先运行: python -m src.rag.index\n"
                 )
+
+        # 语音模式：注入简洁口语系统提示，禁止 CoT
+        if voice_mode:
+            try:
+                messages = payload.get("messages", [])
+                voice_system = render_prompt("voice_prompt", context="", query="")
+                has_system = messages and messages[0].get("role") == "system"
+                if has_system:
+                    messages[0]["content"] = voice_system
+                else:
+                    messages.insert(0, {"role": "system", "content": voice_system})
+                sys.stderr.write(f"[{self.log_date_time_string()}] [Voice] 已注入语音模式系统提示（无 CoT）\n")
+            except Exception:
+                pass  # 非致命
+
+        # 移除前端专属字段，避免传入 LLM 后端
+        payload.pop("voice_mode", None)
 
         is_stream = payload.get("stream", False)
         backend_body = json.dumps(payload).encode("utf-8")

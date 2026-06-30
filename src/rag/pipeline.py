@@ -20,6 +20,8 @@ Chunk: TypeAlias = dict[str, str | int | float]
 
 # RAG 模板名 — 对应 prompt/rag_prompt.txt
 _RAG_PROMPT_NAME = "rag_prompt"
+# 语音模式模板名 — 对应 prompt/voice_prompt.txt（无 CoT，简洁口语）
+_VOICE_PROMPT_NAME = "voice_prompt"
 
 
 class RAGPipeline:
@@ -95,12 +97,13 @@ class RAGPipeline:
             where=where,
         )
 
-    def augment(self, query: str, chunks: list[Chunk]) -> str:
+    def augment(self, query: str, chunks: list[Chunk], prompt_name: str | None = None) -> str:
         """将查询和检索结果拼接为增强后的 prompt。
 
         Args:
             query: 用户原始输入
             chunks: 检索到的文档片段
+            prompt_name: 可选，指定 prompt 模板名（默认使用 _RAG_PROMPT_NAME）
 
         Returns:
             填充了上下文和问题的完整 prompt
@@ -118,4 +121,7 @@ class RAGPipeline:
 
         context = "\n\n".join(parts)
 
+        if prompt_name:
+            template = load_prompt(prompt_name)
+            return template.format(context=context, query=query)
         return self._prompt_template.format(context=context, query=query)

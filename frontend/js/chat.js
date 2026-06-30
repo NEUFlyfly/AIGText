@@ -12,6 +12,12 @@
     conversationId: null,
     pendingPhoto: null,
     abortController: null,
+    voiceMode: false,
+    mediaRecorder: null,
+    speechRecognition: null,
+    voiceTranscript: "",
+    audioChunks: [],
+    lastSpokenText: "",
   };
 
   const dom = {
@@ -37,6 +43,9 @@
     cameraThumb: document.getElementById("camera-thumb"),
     cameraThumbImg: document.getElementById("camera-thumb-img"),
     cameraThumbRemove: document.getElementById("camera-thumb-remove"),
+    voiceToggleBtn: document.getElementById("voice-toggle-btn"),
+    voiceMicBtn: document.getElementById("voice-mic-btn"),
+    // voiceFields set in toggleVoiceMode
   };
 
   function formatTime() {
@@ -170,7 +179,6 @@
     const text = dom.input.value.trim();
     if (!text && !state.pendingPhoto) return;
 
-    // 确保有对话 ID（懒创建）
     await ensureConversation();
 
     // 用户消息气泡（如果有图片，传入图片URL）
@@ -195,6 +203,226 @@
     }
   }
 
+  // ── Voice mode ──
+
+  function toggleVoiceMode() {
+    state.voiceMode = !state.voiceMode;
+    const app = document.getElementById("app");
+
+    if (state.voiceMode) {
+      app.classList.add("voice-mode-active");
+      dom.voiceToggleBtn.classList.add("active");
+      dom.input.style.display = "none";
+      dom.sendBtn.style.display = "none";
+      dom.voiceMicBtn.classList.remove("hidden");
+      ensureVoiceStatus();
+      updateVoiceStatus("", "🎤", "点击麦克风开始录音");
+    } else {
+      app.classList.remove("voice-mode-active");
+      dom.voiceToggleBtn.classList.remove("active");
+      dom.input.style.display = "";
+      dom.sendBtn.style.display = "";
+      dom.voiceMicBtn.classList.add("hidden");
+      removeVoiceStatus();
+      stopSpeaking();
+      stopVoiceRecording();
+    }
+  }
+
+  function ensureVoiceStatus() {
+    let el = document.getElementById("voice-status");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "voice-status";
+      el.className = "voice-status";
+      el.innerHTML = "<span class='voice-status__icon'>🎤</span><span class='voice-status__text'></span>";
+      dom.messages.parentNode.insertBefore(el, dom.messages.nextSibling);
+    }
+    return el;
+  }
+
+  function removeVoiceStatus() {
+    const el = document.getElementById("voice-status");
+    if (el) el.remove();
+  }
+
+  function updateVoiceStatus(className, icon, text) {
+    const el = ensureVoiceStatus();
+    el.className = "voice-status " + className;
+    el.querySelector(".voice-status__icon").textContent = icon;
+    el.querySelector(".voice-status__text").textContent = text;
+  }
+
+  function addSpeakingBars(el) {
+    if (!el.querySelector(".voice-status__bars")) {
+      const bars = document.createElement("span");
+      bars.className = "voice-status__bars";
+      bars.innerHTML = "<span></span><span></span><span></span><span></span><span></span>";
+      el.appendChild(bars);
+    }
+  }
+
+  // ── Voice recording + STT (Web Speech API) ──
+
+  function startVoiceRecording() {
+    stopSpeaking();
+    state.voiceTranscript = "";
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.lang = "zh-CN";
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+      recognition.continuous = true;
+
+      recognition.onresult = (event) => {
+        let interim = "";
+        let final = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const r = event.results[i];
+          if (r.isFinal) final += r[0].transcript;
+          else interim += r[0].transcript;
+        }
+        state.voiceTranscript = final + interim;
+        updateVoiceStatus("voice-status--recording", "🔴", state.voiceTranscript || "正在聆听...");
+      };
+
+      recognition.onerror = (event) => {
+        console.warn("Speech recognition error:", event.error);
+        if (event.error === "no-speech") {
+          updateVoiceStatus("voice-status--recording", "🔴", "没听到声音，请再说一遍");
+        } else if (event.error === "aborted") {
+          // 正常停止
+        } else {
+          updateVoiceStatus("", "⚠️", "语音识别不可用: " + event.error);
+        }
+      };
+
+      recognition.onend = () => {
+        if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
+          try { recognition.start(); } catch (e) {}
+        }
+      };
+
+      state.speechRecognition = recognition;
+      recognition.start();
+    }
+
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      state.mediaRecorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4"
+      });
+      state.audioChunks = [];
+      state.mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) state.audioChunks.push(e.data);
+      };
+      state.mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        state.mediaRecorder = null;
+      };
+      state.mediaRecorder.start();
+      dom.voiceMicBtn.classList.add("recording");
+    }).catch(err => {
+      updateVoiceStatus("", "⚠️", "麦克风权限被拒绝");
+      console.error("Voice recording error:", err);
+    });
+  }
+
+  function stopVoiceRecording() {
+    if (state.speechRecognition) {
+      state.speechRecognition.stop();
+      state.speechRecognition = null;
+    }
+    if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
+      state.mediaRecorder.stop();
+    }
+    dom.voiceMicBtn.classList.remove("recording");
+
+    const text = state.voiceTranscript.trim();
+    state.voiceTranscript = ""; // 立即清空，防止切换到文本模式时重复发送
+    if (text) {
+      updateVoiceStatus("", "📤", "发送: " + text);
+      dom.input.value = text;
+      handleSend();
+    } else {
+      updateVoiceStatus("", "⚠️", "未识别到语音，请重试");
+      setTimeout(() => {
+        if (state.voiceMode) updateVoiceStatus("", "🎤", "点击麦克风开始录音");
+      }, 2000);
+    }
+  }
+
+  // ── Text-to-Speech ──
+
+  function speakNewText(fullText) {
+    if (!state.voiceMode || !("speechSynthesis" in window)) return;
+
+    // 只朗读 answer 部分，跳过 <think> 标签内容（TTS 不应朗读思考过程）
+    const answerText = splitThinkAnswer(fullText).answer || fullText;
+
+    // 已经入队到 TTS 的部分不再重复发送
+    const newText = answerText.substring(state.lastSpokenText.length).trim();
+    if (!newText) return;
+
+    // 只在碰到句子结束标点时才入队朗读，避免半句话的间隙停顿
+    const hasBreak = /[。！？\n]/.test(newText);
+    if (!hasBreak) return;
+
+    // 标标记这段已入队（基于 answer 文本位置）
+    state.lastSpokenText = answerText;
+
+    // 显示朗读状态
+    const el = ensureVoiceStatus();
+    el.className = "voice-status voice-status--speaking";
+    el.querySelector(".voice-status__icon").textContent = "🔊";
+    el.querySelector(".voice-status__text").textContent = "朗读中...";
+    addSpeakingBars(el);
+
+    const voices = window.speechSynthesis.getVoices();
+    const zhVoice = voices.find(v => v.lang.startsWith("zh")) || voices.find(v => v.lang.startsWith("cmn"));
+
+    // 按句子分段一次性入队，浏览器连续播放无间隙
+    const sentences = newText.split(/(?<=[。！？\n])/);
+    let spokeCount = 0;
+    sentences.forEach((sentence) => {
+      const s = sentence.trim();
+      if (!s) return;
+      const utterance = new SpeechSynthesisUtterance(s);
+      utterance.lang = "zh-CN";
+      utterance.rate = 2.6;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+      if (zhVoice) utterance.voice = zhVoice;
+      spokeCount++;
+      // 最后一句播完恢复待机
+      if (spokeCount === sentences.filter(x => x.trim()).length) {
+        utterance.onend = () => {
+          setTimeout(() => {
+            if (!window.speechSynthesis.speaking && state.voiceMode) {
+              updateVoiceStatus("", "🎤", "点击麦克风继续录音");
+            }
+          }, 200);
+        };
+      }
+      window.speechSynthesis.speak(utterance);
+    });
+  }
+        }, 200);
+      }
+    };
+
+    // 不 cancel — 让浏览器自然排队播放
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function stopSpeaking() {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    state.lastSpokenText = "";
+  }
+
   async function streamChat(userText) {
     setStreaming(true);
     state.abortController = new AbortController();
@@ -210,6 +438,7 @@
         },
         body: JSON.stringify({
           stream: true,
+          voice_mode: state.voiceMode,
           messages: [
             { role: "system", content: "You are a helpful assistant." },
             { role: "user", content: userText },
@@ -241,6 +470,7 @@
               fullReply += delta;
       aiEl.innerHTML = renderAnswerBubble(fullReply);
               scrollToBottom();
+              speakNewText(fullReply);
             }
           } catch (e) {}
         }
@@ -335,6 +565,14 @@
   // 事件绑定
   dom.sendBtn.addEventListener("click", handleSend);
   dom.stopBtn.addEventListener("click", stopGeneration);
+  dom.voiceToggleBtn.addEventListener("click", toggleVoiceMode);
+  dom.voiceMicBtn.addEventListener("click", () => {
+    if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
+      stopVoiceRecording();
+    } else {
+      startVoiceRecording();
+    }
+  });
   dom.newChatBtn.addEventListener("click", () => {
     state.messages = [];
     dom.messages.innerHTML = "";
@@ -375,8 +613,8 @@
     state.messages = [];
     dom.messages.innerHTML = "";
     dom.emptyState.style.display = "flex";
+    localStorage.removeItem("aigtext_last_conv");
     closeSidebar();
-    // 不自动创建对话，等待用户发送消息时再创建
   }
 
   async function loadConversations() {
@@ -404,9 +642,15 @@
       const conv = await resp.json();
       state.conversationId = id;
       state.messages = conv.messages || [];
+      localStorage.setItem("aigtext_last_conv", id);
       dom.messages.innerHTML = "";
-      // 渲染消息时传入图片 URL（后端返回的是 image_data 字段）
-      conv.messages.forEach(m => renderMessage(m.role, m.content, m.image_data));
+      // 渲染消息：assistant 用 renderAnswerBubble 支持 <think> 拆分，其余用 renderMessage
+      conv.messages.forEach(m => {
+        const el = renderMessage(m.role, m.content, m.image_data);
+        if (m.role === "assistant" && el) {
+          el.innerHTML = renderAnswerBubble(m.content);
+        }
+      });
       closeSidebar();
     } catch (e) {}
   }
@@ -432,12 +676,35 @@
     });
     const data = await resp.json();
     state.conversationId = data.id;
+    localStorage.setItem("aigtext_last_conv", data.id);
   }
 
   async function init() {
-    // 不自动创建对话，等待用户发送消息时再创建
     state.conversationId = null;
     state.messages = [];
+    // 恢复上次停留的对话
+    const lastId = localStorage.getItem("aigtext_last_conv");
+    if (lastId) {
+      try {
+        const resp = await fetch("/api/conversations/" + lastId);
+        if (resp.ok) {
+          const conv = await resp.json();
+          state.conversationId = lastId;
+          state.messages = conv.messages || [];
+          dom.messages.innerHTML = "";
+          conv.messages.forEach(m => {
+            const el = renderMessage(m.role, m.content, m.image_data);
+            if (m.role === "assistant" && el) {
+              el.innerHTML = renderAnswerBubble(m.content);
+            }
+          });
+          return;
+        }
+      } catch (e) {
+        // 加载失败则回退到新对话
+        localStorage.removeItem("aigtext_last_conv");
+      }
+    }
   }
 
   if (document.readyState === "loading") {

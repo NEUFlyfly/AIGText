@@ -1028,3 +1028,113 @@ body::after {
 @media (max-width: 600px) {
   .sidebar { width: 80vw; }
 }
+
+/* ==================================================================
+   VOICE MODE — 语音输入/输出
+   ================================================================== */
+
+/* Voice toggle button active state */
+#voice-toggle-btn.active {
+  color: #07c160;
+  background: rgba(7, 193, 96, 0.08);
+}
+
+/* Voice mode indicator on header */
+.voice-mode-active .header-title::after {
+  content: " 🎤";
+  font-size: 14px;
+}
+
+/* Mic button */
+#voice-mic-btn {
+  background: #e8e8e8;
+  color: var(--text-primary);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+}
+#voice-mic-btn:hover {
+  background: #ddd;
+}
+#voice-mic-btn:active {
+  transform: scale(0.93);
+}
+
+/* Mic button recording state */
+#voice-mic-btn.recording {
+  background: #fa5151;
+  color: #fff;
+  animation: micPulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 0 0 rgba(250, 81, 81, 0.5);
+}
+#voice-mic-btn.recording:hover {
+  background: #e04848;
+}
+
+@keyframes micPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(250, 81, 81, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 12px rgba(250, 81, 81, 0);
+  }
+}
+
+/* Voice mode — hide text input and send button, keep camera/gallery for photo submission */
+.voice-mode-active #message-input,
+.voice-mode-active #send-button {
+  display: none !important;
+}
+
+/* In voice mode, input bar is simplified */
+.voice-mode-active .input-wrapper {
+  justify-content: center;
+  padding: 8px;
+}
+
+/* Voice status text — shown during recording/transcription/to-speech */
+.voice-status {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  animation: fadeUp 0.2s ease;
+}
+.voice-mode-active .voice-status {
+  display: flex;
+}
+.voice-status__icon {
+  font-size: 16px;
+}
+.voice-status--recording .voice-status__icon {
+  animation: micPulse 0.8s ease-in-out infinite;
+}
+
+/* Wave animation for TTS playback */
+.voice-status--speaking .voice-status__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 16px;
+}
+.voice-status--speaking .voice-status__bars span {
+  display: block;
+  width: 3px;
+  background: var(--accent-blue);
+  border-radius: 2px;
+  animation: soundBar 0.5s ease-in-out infinite alternate;
+}
+.voice-status--speaking .voice-status__bars span:nth-child(1) { height: 40%; animation-delay: 0s; }
+.voice-status--speaking .voice-status__bars span:nth-child(2) { height: 80%; animation-delay: 0.1s; }
+.voice-status--speaking .voice-status__bars span:nth-child(3) { height: 60%; animation-delay: 0.2s; }
+.voice-status--speaking .voice-status__bars span:nth-child(4) { height: 100%; animation-delay: 0.3s; }
+.voice-status--speaking .voice-status__bars span:nth-child(5) { height: 50%; animation-delay: 0.4s; }
+
+@keyframes soundBar {
+  0% { transform: scaleY(0.3); }
+  100% { transform: scaleY(1.2); }
+}
