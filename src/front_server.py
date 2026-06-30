@@ -120,6 +120,7 @@ class FrontendHandler(SimpleHTTPRequestHandler):
 
     backend_url: str = "http://127.0.0.1:18080"
     static_dir: str = os.getcwd()
+    data_dir: str = ""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=self.static_dir, **kwargs)
@@ -144,6 +145,8 @@ class FrontendHandler(SimpleHTTPRequestHandler):
             self._get_conversation(conv_id)
         elif self.path == "/api/knowledge-graph":
             self._serve_knowledge_graph()
+        elif self.path.startswith("/data/") or self.path == "/data":
+            self._serve_data_file()
         else:
             super().do_GET()
 
@@ -316,23 +319,23 @@ class FrontendHandler(SimpleHTTPRequestHandler):
         try:
             image_bytes, question, top_k = _parse_visual_multipart_request(self)
         except ValueError as exc:
-            self._send_json(400, _visual_error_response("INVALID_IMAGE", str(exc)))
+            self._send_json(_visual_error_response("INVALID_IMAGE", str(exc)), 400)
             return
 
         try:
             payload = _run_dual_host_visual_query(image_bytes, question, top_k)
         except _vision_backend_unavailable_errors() as exc:
             self._send_json(
-                503,
                 _visual_error_response(
                     "VISION_BACKEND_UNAVAILABLE",
                     str(exc),
                     retryable=True,
                 ),
+                503,
             )
             return
         except Exception as exc:
-            self._send_json(503, _visual_error_response("MODEL_NOT_READY", str(exc)))
+            self._send_json(_visual_error_response("MODEL_NOT_READY", str(exc)), 503)
             return
 
         status = _visual_api_status(payload)
@@ -348,7 +351,7 @@ class FrontendHandler(SimpleHTTPRequestHandler):
             response_payload["errors"] = [
                 {"code": status, "message": _visual_status_message(status)}
             ]
-            self._send_json(503, response_payload)
+            self._send_json(response_payload, 503)
             return
 
         prompt = _string_or_none(payload.get("augmented_prompt"))
@@ -363,19 +366,10 @@ class FrontendHandler(SimpleHTTPRequestHandler):
                     errors=[{"code": "MODEL_NOT_READY", "message": str(exc)}],
                     include_device_class=include_device_class,
                 )
-                self._send_json(503, error_payload)
+                self._send_json(error_payload, 503)
                 return
 
-        self._send_json(200, response_payload)
-
-    def _send_json(self, status_code: int, payload: dict[str, object]) -> None:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status_code)
-        self._send_cors()
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_json(response_payload, 200)
 
     # ------------------------------------------------------------------
     # 工具
@@ -468,6 +462,64 @@ class FrontendHandler(SimpleHTTPRequestHandler):
             import re
             data = json.loads(re.sub(r'^\s*\/\/.*$', '', f.read(), flags=re.MULTILINE))
         self._send_json(data)
+
+    # ---- 静态数据文件服务 ----
+    def _serve_data_file(self):
+        """GET /data/<rel_path> — 将 project_root/data/ 目录作为静态目录提供服务。
+
+        允许前端通过 fetch("/data/...") 直接读取项目根目录下的 data/ 文件
+        (如 taxonomy.json), 而不是通过 API 接口。"""
+        import urllib.parse
+
+        path = self.path.split("?", 1)[0]
+        # 解析 URL 路径, 获取 /data/ 之后的相对路径
+        rel_path = urllib.parse.unquote(path[len("/data/"):]) if path.startswith("/data/") else ""
+
+        # 路径规范化, 防止 ../.. 等路径穿越攻击
+        try:
+            import posixpath
+            rel_normalized = posixpath.normpath(rel_path)
+            # normpath 不会去掉开头的 .. 或 /, 需要额外过滤
+            if rel_normalized.startswith("..") or rel_normalized.startswith("/"):
+                raise ValueError("invalid path")
+        except ValueError:
+            self.send_error(400, "Invalid path")
+            return
+
+        # 解析绝对路径并验证在 data_dir 范围内
+        if self.data_dir and os.path.isdir(self.data_dir):
+            full_path = os.path.normpath(os.path.join(self.data_dir, rel_normalized))
+            data_dir_real = os.path.realpath(self.data_dir)
+            full_path_real = os.path.realpath(full_path)
+            if not full_path_real.startswith(data_dir_real + os.sep) and full_path_real != data_dir_real:
+                self.send_error(403, "Forbidden")
+                return
+            if not os.path.isfile(full_path_real):
+                self.send_error(404, "File not found")
+                return
+        else:
+            self.send_error(500, "Data directory not configured")
+            return
+
+        # 猜测 MIME 类型
+        import mimetypes
+        mime_type, _ = mimetypes.guess_type(full_path_real)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+
+        try:
+            with open(full_path_real, "rb") as f:
+                data = f.read()
+        except OSError:
+            self.send_error(500, "Error reading file")
+            return
+
+        self.send_response(200)
+        self._send_cors()
+        self.send_header("Content-Type", mime_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def log_message(self, format: str, *args) -> None:
         # 静默静态资源日志，只打印 API 调用
@@ -1017,6 +1069,7 @@ def main():
 
     FrontendHandler.backend_url = args.backend.rstrip("/")
     FrontendHandler.static_dir = static_dir
+    FrontendHandler.data_dir = os.path.join(project_root, "data")
 
     server = ThreadingHTTPServer((args.host, args.port), FrontendHandler)
 

@@ -117,8 +117,8 @@ def save_messages(cid, messages):
     for msg in messages:
         conn.execute(
             "INSERT INTO messages (conversation_id, role, content, image_data, created_at) VALUES (?, ?, ?, ?, ?)",
-            (cid, msg.get("role", "user"), msg.get("content", ""),
-             msg.get("imageData"), now)
+             (cid, msg.get("role", "user"), msg.get("content", ""),
+              msg.get("image_data"), now)
         )
     # Auto-title: use first user message (first 30 chars)
     first_user = next((m for m in messages if m.get("role") == "user"), None)

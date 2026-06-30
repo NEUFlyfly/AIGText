@@ -22,6 +22,7 @@
     stopBtn: document.getElementById("stop-button"),
     newChatBtn: document.getElementById("new-chat-btn"),
     ragSwitch: document.getElementById("rag-switch"),
+    headerBack: document.getElementById("header-back-btn"),
     sidebar: document.getElementById("sidebar"),
     sidebarOverlay: document.getElementById("sidebar-overlay"),
     sidebarToggle: document.getElementById("sidebar-toggle"),
@@ -78,12 +79,14 @@
     dom.stopBtn.classList.toggle("hidden", !v);
   }
 
-  function renderMessage(role, content) {
+  function renderMessage(role, content, imageUrl) {
     hideEmpty();
     const div = document.createElement("div");
     div.className = "message message--" + role;
+    const imageHtml = imageUrl ? `<img class="message__user-image" src="${imageUrl}">` : "";
     div.innerHTML =
       "<div class='message__bubble'>" +
+      imageHtml +
       "<div class='message__content'>" + formatMd(content) + "</div>" +
       "<div class='message__time'>" + formatTime() + "</div>" +
       "</div>";
@@ -92,19 +95,35 @@
     return div.querySelector(".message__content");
   }
 
-  function handleSend() {
+  // 把 File/Blob 转成 data URL（base64）以便持久化到数据库
+  function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleSend() {
     if (state.streaming) return;
     const text = dom.input.value.trim();
     if (!text && !state.pendingPhoto) return;
 
-    // 用户消息气泡
-    renderMessage("user", text || "[图片]");
-    state.messages.push({ role: "user", content: text, timestamp: Date.now() });
+    // 用户消息气泡（如果有图片，传入图片URL）
+    let image_data = null;
+    if (state.pendingPhoto) {
+      // 转成 data URL 以便持久化到数据库
+      image_data = await fileToDataUrl(state.pendingPhoto.blob);
+    }
+    renderMessage("user", text || "", image_data);
+    state.messages.push({ role: "user", content: text, timestamp: Date.now(), image_data: image_data });
     dom.input.value = "";
 
     if (state.pendingPhoto) {
       // 图片 + 文字 → vision API
       sendVision(state.pendingPhoto.blob, text);
+      URL.revokeObjectURL(state.pendingPhoto.url); // 释放临时 blob URL
       state.pendingPhoto = null;
       dom.cameraThumb.classList.add("hidden");
     } else {
@@ -194,7 +213,7 @@
       const result = await resp.json();
 
       let answer = "";
-      if (result.status === "ok") {
+      if (result.status === "ok" || result.status === "OK") {
         const cand = result.visual_candidates?.[0];
         if (cand) answer += "**设备**: " + (cand.sub_category || cand.doc_id || "未知") + "\n\n";
         if (result.answer) answer += result.answer;
@@ -277,6 +296,13 @@
   dom.sidebarOverlay.addEventListener("click", closeSidebar);
   dom.sidebarNewBtn.addEventListener("click", newChat);
 
+  // 返回按钮
+  if (dom.headerBack) {
+    dom.headerBack.addEventListener("click", () => {
+      window.location.href = "index.html";
+    });
+  }
+
   function closeSidebar() {
     dom.sidebar.classList.add("hidden");
     dom.sidebarOverlay.classList.add("hidden");
@@ -323,7 +349,8 @@
       state.conversationId = id;
       state.messages = conv.messages || [];
       dom.messages.innerHTML = "";
-      conv.messages.forEach(m => renderMessage(m.role, m.content));
+      // 渲染消息时传入图片 URL（后端返回的是 image_data 字段）
+      conv.messages.forEach(m => renderMessage(m.role, m.content, m.image_data));
       closeSidebar();
     } catch (e) {}
   }

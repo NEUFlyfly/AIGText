@@ -62,32 +62,41 @@
     arr.forEach(function (entry) {
       var cc = entry.coarse_category || "未分类";
       if (!coarseMap[cc]) {
-        coarseMap[cc] = { seen: false, subs: [] };
+        coarseMap[cc] = { seen: false, subs: {}, entries: [] };
       }
       if (!coarseMap[cc].seen) {
         coarseMap[cc].seen = true;
         coarseOrder.push(cc);
       }
-      // Collect unique sub_category under each coarse
+      // Collect entries by sub_category
       var sc = entry.sub_category || cc;
-      if (coarseMap[cc].subs.indexOf(sc) === -1) {
-        coarseMap[cc].subs.push(sc);
+      if (!coarseMap[cc].subs[sc]) {
+        coarseMap[cc].subs[sc] = [];
       }
+      coarseMap[cc].subs[sc].push(entry);
     });
 
     coarseOrder.forEach(function (cc) {
+      // 大类的描述取第一个文档
+      var firstEntry = Object.values(coarseMap[cc].subs)[0];
+      if (firstEntry && firstEntry.length > 0) {
+        firstEntry = firstEntry[0];
+      }
       var cn = {
         id: cc,
         name: cc,
         desc: "",
+        document_path: firstEntry ? firstEntry.document_path : "",
         level: "coarse",
         children: []
       };
-      coarseMap[cc].subs.forEach(function (sc) {
+      Object.keys(coarseMap[cc].subs).forEach(function (sc) {
+        var entries = coarseMap[cc].subs[sc];
         cn.children.push({
           id: sc,
           name: sc,
           desc: "",
+          document_path: entries[0] ? entries[0].document_path : "",
           level: "sub",
           children: []
         });
@@ -176,7 +185,8 @@
     S.root.children.forEach(function (cat, i) {
       var angle = (i / S.root.children.length) * 2 * Math.PI - Math.PI / 2;
       var cn = {
-        id: cat.id, name: cat.name, desc: cat.desc || "", level: "coarse",
+        id: cat.id, name: cat.name, desc: cat.desc || "", 
+        document_path: cat.document_path || "", level: "coarse",
         parentId: rootId, children: [],
         x: S.cx + R1 * Math.cos(angle), y: S.cy + R1 * Math.sin(angle)
       };
@@ -187,7 +197,8 @@
       (cat.children || []).forEach(function (sub, j) {
         var sa = angle + (j - (cat.children.length - 1) / 2) * 0.22;
         var sn = {
-          id: sub.id, name: sub.name, desc: sub.desc || "", level: "sub",
+          id: sub.id, name: sub.name, desc: sub.desc || "",
+          document_path: sub.document_path || "", level: "sub",
           parentId: cat.id, children: [],
           x: S.cx + R2 * Math.cos(sa), y: S.cy + R2 * Math.sin(sa)
         };
@@ -317,7 +328,82 @@
     var lvl = n.level === "root" ? "根节点" : n.level === "coarse" ? "设备大类" : "具体型号";
     dom.detailLevel.textContent = lvl;
     dom.detailLevel.setAttribute("data-level", n.level === "root" ? "root" : n.level === "coarse" ? "coarse" : "sub");
-    dom.detailDesc.textContent = n.desc || "暂无描述";
+    dom.detailDesc.textContent = "加载中…";
+
+    // 加载 markdown 文档，提取所有可用信息
+    if (n.level === "sub" && n.document_path) {
+      fetch("/" + n.document_path)
+        .then(function (r) { if (!r.ok) throw Error(r.status); return r.text(); })
+        .then(function (md) {
+          var lines = md.split("\n");
+          var info = {
+            category: "",
+            alsoKnownAs: "",
+            description: ""
+          };
+          
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (!line || line.startsWith("#")) continue;
+            
+            // 提取 Category
+            if (line.startsWith("**Category**:")) {
+              info.category = line.replace("**Category**:", "").trim();
+            }
+            // 提取 Also known as
+            else if (line.startsWith("**Also known as**:")) {
+              info.alsoKnownAs = line.replace("**Also known as**:", "").trim();
+            }
+            // 提取描述（纯文本段落）
+            else if (!line.startsWith("**") && !line.startsWith("<") && !line.startsWith("![")) {
+              info.description = line;
+              for (var j = i + 1; j < lines.length; j++) {
+                var nl = lines[j].trim();
+                if (!nl || nl.startsWith("#") || nl.startsWith("**") || nl.startsWith("<")) break;
+                info.description += "\n" + nl;
+              }
+            }
+          }
+          
+          // 构建展示 HTML
+          var html = "";
+          if (info.category) {
+            html += '<div class="graph-detail-info__section">';
+            html += '<span class="graph-detail-info__label">分类</span>';
+            html += '<span>' + info.category + '</span>';
+            html += '</div>';
+          }
+          if (info.alsoKnownAs) {
+            html += '<div class="graph-detail-info__section">';
+            html += '<span class="graph-detail-info__label">别名</span>';
+            html += '<span>' + info.alsoKnownAs + '</span>';
+            html += '</div>';
+          }
+          if (info.description) {
+            html += '<div class="graph-detail-info__section">';
+            html += '<span class="graph-detail-info__label">描述</span>';
+            html += '<p>' + info.description.replace(/\n/g, "<br>") + '</p>';
+            html += '</div>';
+          }
+          
+          dom.detailDesc.innerHTML = html || "暂无描述";
+        })
+        .catch(function () {
+          dom.detailDesc.textContent = n.desc || "暂无描述";
+        });
+    } else {
+      // 根节点 / 大类
+      var html = '<div class="graph-detail-info__section">';
+      if (n.level === "coarse") {
+        html += '<span class="graph-detail-info__label">说明</span>';
+        html += '<p>该大类下包含若干具体型号，请点击具体型号查看详情。</p>';
+      } else {
+        html += '<span class="graph-detail-info__label">说明</span>';
+        html += '<p>物联网设备知识图谱，涵盖常见的硬件开发平台和传感器。</p>';
+      }
+      html += '</div>';
+      dom.detailDesc.innerHTML = html;
+    }
 
     var html = "";
     if (n.level === "root" && S.root.children) {
@@ -332,10 +418,6 @@
         var s = S.nodeMap[cid];
         if (s) html += '<div class="graph-detail-rel__item" data-nid="' + cid + '">' + s.name + '</div>';
       });
-    }
-    if (n.level === "sub" && n.parentId) {
-      var p = S.nodeMap[n.parentId];
-      if (p) html += '<p class="graph-detail-rel__title">所属</p><div class="graph-detail-rel__item" data-nid="' + p.id + '">' + p.name + '</div>';
     }
 
     dom.detailRel.innerHTML = html;
