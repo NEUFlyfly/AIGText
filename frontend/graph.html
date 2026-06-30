@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0d1117">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>AIGText — 知识图谱</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/graph.css">
+</head>
+<body class="graph-body">
+
+  <div id="app" class="graph-app">
+
+    <header id="graph-header">
+      <button id="graph-back-btn" class="graph-back-btn" aria-label="返回">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+      <div class="graph-header__center">
+        <h1 class="graph-title">知识图谱</h1>
+        <p class="graph-subtitle" id="graph-stats">加载中…</p>
+      </div>
+      <div class="graph-header__actions">
+        <button id="graph-search-btn" class="graph-action-btn" aria-label="搜索">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+        <button id="graph-reset-btn" class="graph-action-btn" aria-label="重置">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 1 9 9"></path><polyline points="3 12 7 12 7 8"></polyline>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div id="graph-search-bar" class="graph-search-bar hidden">
+      <div class="graph-search-bar__inner">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="graph-search-bar__icon">
+          <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input id="graph-search-input" class="graph-search-input" placeholder="搜索设备…" autocomplete="off">
+        <button id="graph-search-clear" class="graph-search-clear">&times;</button>
+      </div>
+      <div id="graph-search-results" class="graph-search-results hidden"></div>
+    </div>
+
+    <main id="graph-canvas"></main>
+
+    <div class="graph-legend">
+      <div class="graph-legend__item"><span class="graph-legend__dot graph-legend__dot--root"></span>根节点</div>
+      <div class="graph-legend__item"><span class="graph-legend__dot graph-legend__dot--coarse"></span>设备大类</div>
+      <div class="graph-legend__item"><span class="graph-legend__dot graph-legend__dot--sub"></span>具体型号</div>
+    </div>
+
+    <div id="graph-detail-panel" class="graph-detail-panel hidden">
+      <div class="graph-detail-panel__header">
+        <h3 id="graph-detail-title"></h3>
+        <button id="graph-detail-close" class="graph-detail-close">&times;</button>
+      </div>
+      <div class="graph-detail-panel__body">
+        <p id="graph-detail-level"></p>
+        <p id="graph-detail-desc"></p>
+        <div id="graph-detail-relations"></div>
+      </div>
+    </div>
+
+    <div id="graph-loading" class="graph-loading">
+      <div class="graph-loading__spinner"></div>
+      <p>构建知识图谱…</p>
+    </div>
+
+  </div>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="js/common.js?v=20260701"></script>
+  <script src="js/graph.js?v=20260701"></script>
+</body>
+</html>

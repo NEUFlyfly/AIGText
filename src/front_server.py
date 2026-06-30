@@ -28,7 +28,16 @@ import urllib.error
 import urllib.request
 import webbrowser
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+from socketserver import ThreadingMixIn
 from typing import Callable
+
+
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    """Multi-threaded HTTP server — prevents long-running requests (e.g. 3D
+    modeling) from blocking concurrent requests (e.g. chat, health check)."""
+
+    allow_reuse_address = True
+    daemon_threads = True
 
 
 # ------------------------------------------------------------------
@@ -122,6 +131,19 @@ class FrontendHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/health":
             self._proxy_health()
+        elif self.path == "/api/ping":
+            self.send_response(200)
+            self._send_cors()
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+        elif self.path == "/api/conversations":
+            self._list_conversations()
+        elif self.path.startswith("/api/conversations/"):
+            conv_id = self.path[len("/api/conversations/"):]
+            self._get_conversation(conv_id)
+        elif self.path == "/api/knowledge-graph":
+            self._serve_knowledge_graph()
         else:
             super().do_GET()
 
@@ -133,6 +155,11 @@ class FrontendHandler(SimpleHTTPRequestHandler):
             self._handle_visual_query(include_device_class=False)
         elif path == "/api/vision/classify":
             self._handle_visual_query(include_device_class=True)
+        elif path == "/api/conversations":
+            self._create_conversation()
+        elif path.startswith("/api/conversations/"):
+            conv_id = path[len("/api/conversations/"):]
+            self._save_conversation(conv_id)
         else:
             self._send_cors()
             self.send_error(404, "Not Found")
@@ -142,6 +169,15 @@ class FrontendHandler(SimpleHTTPRequestHandler):
         self._send_cors()
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def do_DELETE(self):
+        path = self.path.split("?", 1)[0]
+        if path.startswith("/api/conversations/"):
+            conv_id = path[len("/api/conversations/"):]
+            self._delete_conversation(conv_id)
+        else:
+            self._send_cors()
+            self.send_error(404, "Not Found")
 
     # ------------------------------------------------------------------
     # API 代理
@@ -198,27 +234,35 @@ class FrontendHandler(SimpleHTTPRequestHandler):
         if rag_enabled:
             pipeline = _get_rag_pipeline()
             if pipeline and pipeline.is_ready:
-                messages = payload.get("messages", [])
-                # 找到最后一条 user 消息
-                user_idx = None
-                for i in range(len(messages) - 1, -1, -1):
-                    if messages[i].get("role") == "user":
-                        user_idx = i
-                        break
-                if user_idx is not None:
-                    user_query = messages[user_idx].get("content", "")
-                    chunks = pipeline.retrieve(user_query)
-                    if chunks:
-                        augmented_text = pipeline.augment(user_query, chunks)
-                        messages[user_idx] = {
-                            "role": "user",
-                            "content": augmented_text,
-                        }
-                        augmented = True
-                        msg = f"[RAG] 检索到 {len(chunks)} 个相关片段"
-                    else:
-                        msg = "[RAG] 未检索到相关文档，使用原始查询"
-                    sys.stderr.write(f"[{self.log_date_time_string()}] {msg}\n")
+                try:
+                    messages = payload.get("messages", [])
+                    # 找到最后一条 user 消息
+                    user_idx = None
+                    for i in range(len(messages) - 1, -1, -1):
+                        if messages[i].get("role") == "user":
+                            user_idx = i
+                            break
+                    if user_idx is not None:
+                        user_query = messages[user_idx].get("content", "")
+                        chunks = pipeline.retrieve(user_query)
+                        if chunks:
+                            augmented_text = pipeline.augment(user_query, chunks)
+                            messages[user_idx] = {
+                                "role": "user",
+                                "content": augmented_text,
+                            }
+                            augmented = True
+                            msg = f"[RAG] 检索到 {len(chunks)} 个相关片段"
+                        else:
+                            msg = "[RAG] 未检索到相关文档，使用原始查询"
+                        sys.stderr.write(f"[{self.log_date_time_string()}] {msg}\n")
+                except Exception as e:
+                    import traceback
+                    sys.stderr.write(
+                        f"[{self.log_date_time_string()}] [RAG] 检索失败: {e}\n"
+                        f"{traceback.format_exc()}\n"
+                    )
+                    # RAG 失败不影响正常对话
             elif rag_enabled:
                 sys.stderr.write(
                     f"[{self.log_date_time_string()}] [RAG] 向量库未就绪，请先运行: python -m src.rag.index\n"
@@ -340,11 +384,90 @@ class FrontendHandler(SimpleHTTPRequestHandler):
     def _send_cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header(
-            "Access-Control-Allow-Methods", "GET, POST, OPTIONS"
+            "Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"
         )
         self.send_header(
             "Access-Control-Allow-Headers", "Content-Type, X-RAG-Enabled"
         )
+
+    # ---- JSON helpers ----
+    def _send_json(self, data, status=200):
+        self.send_response(status)
+        self._send_cors()
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        payload = json.dumps(data).encode("utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _read_json_body(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        raw_body = self.rfile.read(content_length)
+        if not raw_body:
+            return {}
+        return json.loads(raw_body.decode("utf-8"))
+
+    # ---- Conversation API ----
+    def _list_conversations(self):
+        """GET /api/conversations — 返回所有对话列表"""
+        from src.db import database as db
+        self._send_json(db.list_conversations())
+
+    def _get_conversation(self, conv_id: str):
+        """GET /api/conversations/:id — 返回单个对话含消息"""
+        from src.db import database as db
+        conv = db.get_conversation(conv_id)
+        if not conv:
+            self._send_json({"error": "Conversation not found"}, 404)
+        else:
+            self._send_json(conv)
+
+    def _create_conversation(self):
+        """POST /api/conversations — 创建新对话"""
+        try:
+            body = self._read_json_body()
+        except Exception as e:
+            self._send_json({"error": "Invalid JSON: " + str(e)}, 400)
+            return
+        from src.db import database as db
+        title = body.get("title") or "新对话"
+        conv = db.create_conversation(title=title)
+        self._send_json(conv, 201)
+
+    def _save_conversation(self, conv_id: str):
+        """POST /api/conversations/:id — 保存/更新对话消息"""
+        try:
+            body = self._read_json_body()
+        except Exception as e:
+            self._send_json({"error": "Invalid JSON: " + str(e)}, 400)
+            return
+        from src.db import database as db
+        messages = body.get("messages", [])
+        db.save_messages(conv_id, messages)
+        if body.get("title"):
+            db.update_conversation_title(conv_id, body["title"])
+        self._send_json({"ok": True})
+
+    def _delete_conversation(self, conv_id: str):
+        """DELETE /api/conversations/:id — 删除对话"""
+        from src.db import database as db
+        db.delete_conversation(conv_id)
+        self._send_json({"ok": True})
+
+    # ---- Knowledge Graph API ----
+    def _serve_knowledge_graph(self):
+        """GET /api/knowledge-graph — 返回物联网设备知识图谱数据"""
+        graph_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "data", "iot_knowledge", "iot_taxonomy.json"
+        )
+        if not os.path.isfile(graph_path):
+            self._send_json({"error": "Knowledge graph not found"}, 404)
+            return
+        with open(graph_path, "r", encoding="utf-8") as f:
+            import re
+            data = json.loads(re.sub(r'^\s*\/\/.*$', '', f.read(), flags=re.MULTILINE))
+        self._send_json(data)
 
     def log_message(self, format: str, *args) -> None:
         # 静默静态资源日志，只打印 API 调用
@@ -820,12 +943,48 @@ def _int_or_zero(value: object) -> int:
 
 
 # ------------------------------------------------------------------
+# 入口辅助函数
+# ------------------------------------------------------------------
+
+def _open_browser(url: str) -> None:
+    """尝试打开默认浏览器（失败静默忽略）。"""
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass
+
+
+def _get_local_ips() -> list[str]:
+    """获取本机所有局域网 IPv4 地址（排除 127.x.x.x）。"""
+    ips = []
+    try:
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            ip = info[4][0]
+            if ip != "127.0.0.1":
+                ips.append(ip)
+    except Exception:
+        pass
+
+    # 去重并保持顺序
+    seen = set()
+    unique = []
+    for ip in ips:
+        if ip not in seen:
+            seen.add(ip)
+            unique.append(ip)
+    return unique
+
+
+# ------------------------------------------------------------------
 # 入口
 # ------------------------------------------------------------------
 
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
     default_static = os.path.join(project_root, "frontend")
 
     parser = argparse.ArgumentParser(
@@ -859,83 +1018,34 @@ def main():
     FrontendHandler.backend_url = args.backend.rstrip("/")
     FrontendHandler.static_dir = static_dir
 
-    server = HTTPServer((args.host, args.port), FrontendHandler)
+    server = ThreadingHTTPServer((args.host, args.port), FrontendHandler)
 
     # 获取本机局域网 IP
     local_ips = _get_local_ips()
 
-    print()
-    print("=" * 52)
-    print("  AIGText — Frontend Server")
-    print("=" * 52)
-    print(f"  后端服务:  {FrontendHandler.backend_url}")
-    print(f"  静态目录:  {static_dir}")
-    print("=" * 52)
-    print()
-    print("  本机访问:")
-    print(f"    http://localhost:{args.port}")
-    print(f"    http://127.0.0.1:{args.port}")
-    if local_ips:
-        print()
-        print("  局域网访问 (分享给同事/手机):")
-        for ip in local_ips:
-            print(f"    http://{ip}:{args.port}")
-    else:
-        print()
-        print("  [WARN] 未检测到局域网 IP，请检查网络连接")
-    print()
-    print("  [注意] 如局域网设备无法访问，请在 Windows 防火墙中")
-    print(f"         允许 Python 通过端口 {args.port}：")
-    print("         控制面板 → 防火墙 → 高级设置 → 入站规则 → 新建规则")
-    print(f"         端口 → TCP → {args.port} → 允许连接")
-    print("=" * 52)
-    print()
-    print("按 Ctrl+C 停止服务")
-    print()
+    lan_urls = ", ".join(f"http://{ip}:{args.port}" for ip in local_ips) if local_ips else "无"
+    print(f"AIGText http://localhost:{args.port}  LAN: {lan_urls}", file=sys.stderr)
 
-    # 同步加载 RAG 嵌入模型，确保就绪后再启动服务
-    sys.stderr.write("[RAG] 正在加载嵌入模型（约 10-30s）...\n")
-    sys.stderr.flush()
-    _preload_rag_sync()
+    # RAG 后台加载，不阻塞 HTTP 服务启动
+    threading.Thread(target=_preload_rag, name="rag-loader", daemon=True).start()
 
-    # 自动打开浏览器
-    _open_browser(f"http://localhost:{args.port}")
+    # 初始化对话数据库
+    try:
+        from src.db.database import init_db
+        init_db()
+        sys.stderr.write("[DB] 数据库已初始化\n")
+    except Exception as e:
+        sys.stderr.write(f"[DB] 数据库初始化失败: {e}\n")
+
+    # 自动打开浏览器（延迟 0.5s 避免 serve_forever 尚未就绪的竞态）
+    url = f"http://localhost:{args.port}"
+    threading.Timer(0.5, lambda u=url: _open_browser(u)).start()
 
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\n服务已停止。")
         server.shutdown()
-
-
-def _open_browser(url: str) -> None:
-    """尝试打开默认浏览器（失败静默忽略）。"""
-    try:
-        webbrowser.open(url)
-    except Exception:
-        pass
-
-
-def _get_local_ips() -> list[str]:
-    """获取本机所有局域网 IPv4 地址（排除 127.x.x.x）。"""
-    ips = []
-    try:
-        hostname = socket.gethostname()
-        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
-            ip = info[4][0]
-            if ip != "127.0.0.1":
-                ips.append(ip)
-    except Exception:
-        pass
-
-    # 去重并保持顺序
-    seen = set()
-    unique = []
-    for ip in ips:
-        if ip not in seen:
-            seen.add(ip)
-            unique.append(ip)
-    return unique
 
 
 if __name__ == "__main__":

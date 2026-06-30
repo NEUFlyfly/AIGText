@@ -5,16 +5,26 @@
 # ---- Python ----
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 *.egg-info/
 dist/
 build/
 *.egg
+*.so
+
+# ---- Conda ----
+.conda/
+anaconda3/
+miniconda3/
 
 # ---- Runtime binaries (llama.cpp, too large for git) ----
 bin/
 
 # ---- Model weights (too large for git) ----
 models/lang/*.gguf
+models/lang/*.bin
+models/lang/*.safetensors
 models/vision/*.pt
 models/vision/*.bin
 models/vision/*.safetensors
@@ -22,13 +32,42 @@ models/vision/*.pth
 models/vision/*.ckpt
 models/embedding/hub/
 models/**/.cache/
+models/depth-anything-v2/
 
 # ---- ChromaDB vector store (rebuildable from documents) ----
 data/vectorstore/
 
+# ---- Generated output (rebuildable) ----
+data/models/
+data/temp/
+*.glb
+*.obj
+*.mtl
+
 # ---- Runtime logs ----
 logs/
 *.log
+nohup.out
+
+# ---- Database (auto-created) ----
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.sqlite
+data/*.sqlite3
+
+# ---- IoT knowledge documents (auto-generated) ----
+data/iot_knowledge/
+
+# ---- Images ----
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.webp
+*.svg
+*.ico
 
 # ---- Project planning ----
 .sisyphus/
@@ -42,6 +81,12 @@ venv/
 *.secret
 *.key
 
+# ---- Node.js (if any frontend build) ----
+node_modules/
+package-lock.json
+yarn.lock
+.npm/
+
 # ---- Test artifacts ----
 .pytest_cache/
 .coverage
@@ -53,12 +98,39 @@ htmlcov/
 *.swp
 *.swo
 *~
+*.sublime-project
+*.sublime-workspace
+*.snp
 
 # ---- OS ----
 .DS_Store
+.DS_Store
 Thumbs.db
 desktop.ini
+desktop.ini
+Icon?
+ehthumbs.db
+System Volume Information
+$RECYCLE.BIN
+nul
+NUL
+null
+NULL
 
 # ---- Temp files ----
 *.tmp
 *.temp
+*.bak
+*.orig
+*.pyc
+*.snp
+
+# ---- Playwright / test artifacts ----
+.playwright-mcp/
+*.yml
+*.yaml
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+docs/vision-backend-api-spec.md

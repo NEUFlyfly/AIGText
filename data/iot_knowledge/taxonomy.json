@@ -1,38 +1,194 @@
 [
   {
-    "doc_id": "fixture_temp_sensor",
-    "coarse_category": "智能传感器",
-    "sub_category": "温湿度传感器",
-    "aliases": [
-      "温湿度探头",
-      "环境温湿度传感器"
-    ],
-    "description": "用于采集室内温度与相对湿度的智能传感器 fixture 分类。",
-    "image_dir": "tests/fixtures/iot_knowledge/智能传感器/温湿度传感器/images",
-    "document_path": "tests/fixtures/iot_knowledge/智能传感器/温湿度传感器/document.md"
+    "doc_id": "arduino_boards/arduino_uno",
+    "coarse_category": "Arduino development boards",
+    "sub_category": "Arduino Uno",
+    "document_path": "data/iot_knowledge/arduino_boards/arduino_uno/document.md"
   },
   {
-    "doc_id": "fixture_pir_sensor",
-    "coarse_category": "智能传感器",
-    "sub_category": "人体红外传感器",
-    "aliases": [
-      "PIR 传感器",
-      "人体感应器"
-    ],
-    "description": "用于检测人体移动与存在状态的被动红外传感器 fixture 分类。",
-    "image_dir": "tests/fixtures/iot_knowledge/智能传感器/人体红外传感器/images",
-    "document_path": "tests/fixtures/iot_knowledge/智能传感器/人体红外传感器/document.md"
+    "doc_id": "arduino_boards/arduino_mega_2560",
+    "coarse_category": "Arduino development boards",
+    "sub_category": "Arduino Mega 2560",
+    "document_path": "data/iot_knowledge/arduino_boards/arduino_mega_2560/document.md"
   },
   {
-    "doc_id": "fixture_ptz_camera",
-    "coarse_category": "智能摄像头",
-    "sub_category": "室内云台摄像头",
-    "aliases": [
-      "PTZ 室内摄像头",
-      "云台监控摄像机"
-    ],
-    "description": "用于室内旋转巡航、视频看护与移动追踪的云台摄像头 fixture 分类。",
-    "image_dir": "tests/fixtures/iot_knowledge/智能摄像头/室内云台摄像头/images",
-    "document_path": "tests/fixtures/iot_knowledge/智能摄像头/室内云台摄像头/document.md"
+    "doc_id": "arduino_boards/arduino_nano",
+    "coarse_category": "Arduino development boards",
+    "sub_category": "Arduino Nano",
+    "document_path": "data/iot_knowledge/arduino_boards/arduino_nano/document.md"
+  },
+  {
+    "doc_id": "arduino_boards/arduino_due",
+    "coarse_category": "Arduino development boards",
+    "sub_category": "Arduino Due",
+    "document_path": "data/iot_knowledge/arduino_boards/arduino_due/document.md"
+  },
+  {
+    "doc_id": "arduino_boards/arduino_micro",
+    "coarse_category": "Arduino development boards",
+    "sub_category": "Arduino Micro",
+    "document_path": "data/iot_knowledge/arduino_boards/arduino_micro/document.md"
+  },
+  {
+    "doc_id": "arduino_boards/arduino_promini",
+    "coarse_category": "Arduino development boards",
+    "sub_category": "Arduino Pro Mini",
+    "document_path": "data/iot_knowledge/arduino_boards/arduino_promini/document.md"
+  },
+  {
+    "doc_id": "arduino_boards/arduino_zero",
+    "coarse_category": "Arduino development boards",
+    "sub_category": "Arduino Zero",
+    "document_path": "data/iot_knowledge/arduino_boards/arduino_zero/document.md"
+  },
+  {
+    "doc_id": "arduino_boards/arduino_leonardo",
+    "coarse_category": "Arduino development boards",
+    "sub_category": "Arduino Leonardo",
+    "document_path": "data/iot_knowledge/arduino_boards/arduino_leonardo/document.md"
+  },
+  {
+    "doc_id": "arduino_boards/arduino_wifi_shield",
+    "coarse_category": "Arduino development boards",
+    "sub_category": "Arduino Uno WiFi Shield",
+    "document_path": "data/iot_knowledge/arduino_boards/arduino_wifi_shield/document.md"
+  },
+  {
+    "doc_id": "raspberry_pi_boards/raspberry_pi_3_b",
+    "coarse_category": "Raspberry Pi single-board computers",
+    "sub_category": "Raspberry Pi 3 Model B",
+    "document_path": "data/iot_knowledge/raspberry_pi_boards/raspberry_pi_3_b/document.md"
+  },
+  {
+    "doc_id": "raspberry_pi_boards/raspberry_pi_4_b",
+    "coarse_category": "Raspberry Pi single-board computers",
+    "sub_category": "Raspberry Pi 4 Model B",
+    "document_path": "data/iot_knowledge/raspberry_pi_boards/raspberry_pi_4_b/document.md"
+  },
+  {
+    "doc_id": "raspberry_pi_boards/raspberry_pi_5",
+    "coarse_category": "Raspberry Pi single-board computers",
+    "sub_category": "Raspberry Pi 5",
+    "document_path": "data/iot_knowledge/raspberry_pi_boards/raspberry_pi_5/document.md"
+  },
+  {
+    "doc_id": "raspberry_pi_boards/raspberry_pi_zero",
+    "coarse_category": "Raspberry Pi single-board computers",
+    "sub_category": "Raspberry Pi Zero family",
+    "document_path": "data/iot_knowledge/raspberry_pi_boards/raspberry_pi_zero/document.md"
+  },
+  {
+    "doc_id": "esp_wemos_boards/esp32",
+    "coarse_category": "ESP and Wemos wireless boards",
+    "sub_category": "ESP32",
+    "document_path": "data/iot_knowledge/esp_wemos_boards/esp32/document.md"
+  },
+  {
+    "doc_id": "esp_wemos_boards/esp8266",
+    "coarse_category": "ESP and Wemos wireless boards",
+    "sub_category": "ESP8266",
+    "document_path": "data/iot_knowledge/esp_wemos_boards/esp8266/document.md"
+  },
+  {
+    "doc_id": "esp_wemos_boards/wemos",
+    "coarse_category": "ESP and Wemos wireless boards",
+    "sub_category": "Wemos board",
+    "document_path": "data/iot_knowledge/esp_wemos_boards/wemos/document.md"
+  },
+  {
+    "doc_id": "camera_modules/arduino_camera_shield",
+    "coarse_category": "Camera and vision modules",
+    "sub_category": "Arduino Uno Camera Shield",
+    "document_path": "data/iot_knowledge/camera_modules/arduino_camera_shield/document.md"
+  },
+  {
+    "doc_id": "sensor_modules/soil_moisture_sensor_project",
+    "coarse_category": "Sensor modules and sensor projects",
+    "sub_category": "Soil moisture sensing project",
+    "document_path": "data/iot_knowledge/sensor_modules/soil_moisture_sensor_project/document.md"
+  },
+  {
+    "doc_id": "jetson_boards/jetson_nano",
+    "coarse_category": "NVIDIA Jetson edge AI boards",
+    "sub_category": "NVIDIA Jetson Nano",
+    "document_path": "data/iot_knowledge/jetson_boards/jetson_nano/document.md"
+  },
+  {
+    "doc_id": "jetson_boards/jetson_tx2",
+    "coarse_category": "NVIDIA Jetson edge AI boards",
+    "sub_category": "NVIDIA Jetson TX2",
+    "document_path": "data/iot_knowledge/jetson_boards/jetson_tx2/document.md"
+  },
+  {
+    "doc_id": "stm32_telosb_boards/stm32",
+    "coarse_category": "STM32 and TelosB embedded boards",
+    "sub_category": "STM32 board",
+    "document_path": "data/iot_knowledge/stm32_telosb_boards/stm32/document.md"
+  },
+  {
+    "doc_id": "stm32_telosb_boards/telosb",
+    "coarse_category": "STM32 and TelosB embedded boards",
+    "sub_category": "TelosB wireless sensor node",
+    "document_path": "data/iot_knowledge/stm32_telosb_boards/telosb/document.md"
+  },
+  {
+    "doc_id": "fpga_and_specialized_boards/spartan6",
+    "coarse_category": "FPGA and specialized PCB boards",
+    "sub_category": "Xilinx Spartan-6 board",
+    "document_path": "data/iot_knowledge/fpga_and_specialized_boards/spartan6/document.md"
+  },
+  {
+    "doc_id": "fpga_and_specialized_boards/virtex5",
+    "coarse_category": "FPGA and specialized PCB boards",
+    "sub_category": "Xilinx Virtex-5 board",
+    "document_path": "data/iot_knowledge/fpga_and_specialized_boards/virtex5/document.md"
+  },
+  {
+    "doc_id": "fpga_and_specialized_boards/virtex6",
+    "coarse_category": "FPGA and specialized PCB boards",
+    "sub_category": "Xilinx Virtex-6 board",
+    "document_path": "data/iot_knowledge/fpga_and_specialized_boards/virtex6/document.md"
+  },
+  {
+    "doc_id": "fpga_and_specialized_boards/hackrf",
+    "coarse_category": "FPGA and specialized PCB boards",
+    "sub_category": "HackRF software-defined radio board",
+    "document_path": "data/iot_knowledge/fpga_and_specialized_boards/hackrf/document.md"
+  },
+  {
+    "doc_id": "fpga_and_specialized_boards/thingmagic_m6e",
+    "coarse_category": "FPGA and specialized PCB boards",
+    "sub_category": "ThingMagic M6e RFID module",
+    "document_path": "data/iot_knowledge/fpga_and_specialized_boards/thingmagic_m6e/document.md"
+  },
+  {
+    "doc_id": "fpga_and_specialized_boards/zturn",
+    "coarse_category": "FPGA and specialized PCB boards",
+    "sub_category": "ZTurn development board",
+    "document_path": "data/iot_knowledge/fpga_and_specialized_boards/zturn/document.md"
+  },
+  {
+    "doc_id": "fpga_and_specialized_boards/duetwifi",
+    "coarse_category": "FPGA and specialized PCB boards",
+    "sub_category": "Duet WiFi controller board",
+    "document_path": "data/iot_knowledge/fpga_and_specialized_boards/duetwifi/document.md"
+  },
+  {
+    "doc_id": "diy_project_scenes/soil_moisture_project",
+    "coarse_category": "DIY IoT project scenes",
+    "sub_category": "Soil moisture monitoring project",
+    "document_path": "data/iot_knowledge/diy_project_scenes/soil_moisture_project/document.md"
+  },
+  {
+    "doc_id": "diy_project_scenes/gps_logger_project",
+    "coarse_category": "DIY IoT project scenes",
+    "sub_category": "GPS logger project",
+    "document_path": "data/iot_knowledge/diy_project_scenes/gps_logger_project/document.md"
+  },
+  {
+    "doc_id": "diy_project_scenes/dc_motor_control_project",
+    "coarse_category": "DIY IoT project scenes",
+    "sub_category": "DC motor control project",
+    "document_path": "data/iot_knowledge/diy_project_scenes/dc_motor_control_project/document.md"
   }
 ]

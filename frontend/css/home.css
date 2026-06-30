@@ -122,6 +122,16 @@
   background: var(--gradient-card-1);
 }
 
+/* Card 2 — purple/violet gradient accent (Learning) */
+.feature-card--learning::before {
+  background: linear-gradient(135deg, #6c5ce7 0%, #a855f7 50%, #cc5de8 100%);
+}
+
+/* Card 3 — indigo gradient accent (Graph) */
+.feature-card--graph::before {
+  background: linear-gradient(135deg, #6366f1 0%, #818cf8 50%, #a78bfa 100%);
+}
+
 /* Card 2 — pink/coral gradient accent */
 .feature-card--model::before {
   background: var(--gradient-card-2);
@@ -203,14 +213,24 @@
   animation-delay: 0ms;
 }
 
-.feature-card--model {
+.feature-card--learning {
   animation: fadeUp var(--duration-reveal) var(--ease-out) both;
   animation-delay: 150ms;
 }
 
-.feature-card--ar {
+.feature-card--graph {
   animation: fadeUp var(--duration-reveal) var(--ease-out) both;
   animation-delay: 300ms;
+}
+
+.feature-card--model {
+  animation: fadeUp var(--duration-reveal) var(--ease-out) both;
+  animation-delay: 300ms;
+}
+
+.feature-card--ar {
+  animation: fadeUp var(--duration-reveal) var(--ease-out) both;
+  animation-delay: 450ms;
 }
 
 /* ---- Footer ---- */

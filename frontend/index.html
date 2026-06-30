@@ -41,18 +41,17 @@
         </div>
       </article>
 
-      <!-- Card 2: 3D Modeling -->
-      <article class="feature-card feature-card--model" onclick="Nav.go('modeling.html')" role="link" tabindex="0" aria-label="3D 建模 — 点击进入建模页面">
+      <!-- Card 2: Learning Report -->
+      <article class="feature-card feature-card--learning" onclick="Nav.go('learning.html')" role="link" tabindex="0" aria-label="学习报告 — 点击查看学习统计">
         <div class="feature-card__icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#f5576c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-            <line x1="12" y1="22.08" x2="12" y2="12"/>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9"/>
+            <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
           </svg>
         </div>
         <div class="feature-card__body">
-          <h2 class="feature-card__title">3D 建模</h2>
-          <p class="feature-card__desc">扫描真实物体，自动生成高精度三维模型</p>
+          <h2 class="feature-card__title">学习报告</h2>
+          <p class="feature-card__desc">查看识别统计、设备分布图表和学习进度</p>
         </div>
         <div class="feature-card__arrow">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -61,21 +60,24 @@
         </div>
       </article>
 
-      <!-- Card 3: AR Interaction -->
-      <article class="feature-card feature-card--ar" onclick="Nav.go('ar.html')" role="link" tabindex="0" aria-label="AR 交互 — 点击进入 AR 页面">
+      <!-- Card 3: Knowledge Graph -->
+      <article class="feature-card feature-card--graph" onclick="Nav.go('graph.html')" role="link" tabindex="0" aria-label="知识图谱 — 点击浏览设备知识网络">
         <div class="feature-card__icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#4facfe" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-            <line x1="8" y1="21" x2="16" y2="21"/>
-            <line x1="12" y1="17" x2="12" y2="21"/>
-            <circle cx="12" cy="10" r="3"/>
-            <path d="M12 7v2M12 11v2M9.5 8.5l1.5 1.5M14.5 8.5l-1.5 1.5"/>
-            <rect x="9" y="8" width="6" height="4" rx="2" stroke-dasharray="1.5 1.5" fill="none"/>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="2"/>
+            <circle cx="6" cy="6" r="2"/>
+            <circle cx="18" cy="6" r="2"/>
+            <circle cx="6" cy="18" r="2"/>
+            <circle cx="18" cy="18" r="2"/>
+            <line x1="12" y1="10" x2="6" y2="8"/>
+            <line x1="12" y1="10" x2="18" y2="8"/>
+            <line x1="12" y1="14" x2="6" y2="16"/>
+            <line x1="12" y1="14" x2="18" y2="16"/>
           </svg>
         </div>
         <div class="feature-card__body">
-          <h2 class="feature-card__title">AR 交互</h2>
-          <p class="feature-card__desc">将 3D 模型投射到现实场景，沉浸式交互体验</p>
+          <h2 class="feature-card__title">知识图谱</h2>
+          <p class="feature-card__desc">可视化浏览物联网设备关系网络与分类体系</p>
         </div>
         <div class="feature-card__arrow">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -100,7 +102,7 @@
 
   </div>
 
-  <script src="js/common.js"></script>
+  <script src="js/common.js?v=20260701"></script>
   <script>
     (function () {
       var dot = document.getElementById('health-dot');

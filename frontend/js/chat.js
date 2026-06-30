@@ -1,744 +1,359 @@
 /**
- * AIGText — Chat Frontend Logic
- *
- * Pure vanilla JS — SSE streaming, RAG toggle, localStorage persistence,
- * markdown formatting, AbortController for stop generation.
+ * AIGText Chat — 简化可靠版本
+ * 功能：文本聊天（SSE 流式）、图片上传、对话历史
  */
+(function () {
+  "use strict";
 
-/* ==================================================================
-   GLOBAL STATE
-   ================================================================== */
-const state = {
-  messages: [
-    {
-      role: "system",
-      content:
-        "You are a helpful assistant. Answer concisely in the same language as the user.",
-    },
-  ],
-  streaming: false,
-  ragEnabled: true,
-  activeStreamBubble: null,
-  healthTimer: null,
-  abortController: null,
-};
+  const state = {
+    messages: [],
+    streaming: false,
+    ragEnabled: true,
+    conversationId: null,
+    pendingPhoto: null,
+    abortController: null,
+  };
 
-/* ==================================================================
-   DOM REFERENCES
-   ================================================================== */
-// $ and $$ are provided by common.js (loaded first)
+  const dom = {
+    messages: document.getElementById("messages"),
+    emptyState: document.getElementById("empty-state"),
+    input: document.getElementById("message-input"),
+    sendBtn: document.getElementById("send-button"),
+    stopBtn: document.getElementById("stop-button"),
+    newChatBtn: document.getElementById("new-chat-btn"),
+    ragSwitch: document.getElementById("rag-switch"),
+    sidebar: document.getElementById("sidebar"),
+    sidebarOverlay: document.getElementById("sidebar-overlay"),
+    sidebarToggle: document.getElementById("sidebar-toggle"),
+    sidebarClose: document.getElementById("sidebar-close"),
+    sidebarNewBtn: document.getElementById("sidebar-new-btn"),
+    sidebarList: document.getElementById("sidebar-list"),
+    sidebarEmpty: document.getElementById("sidebar-empty"),
+    galleryInput: document.getElementById("gallery-input"),
+    cameraCaptureInput: document.getElementById("camera-capture-input"),
+    galleryButton: document.getElementById("gallery-button"),
+    cameraButton: document.getElementById("camera-button"),
+    cameraThumb: document.getElementById("camera-thumb"),
+    cameraThumbImg: document.getElementById("camera-thumb-img"),
+    cameraThumbRemove: document.getElementById("camera-thumb-remove"),
+  };
 
-const dom = {
-  messages: $("#messages"),
-  emptyState: $("#empty-state"),
-  input: $("#message-input"),
-  sendBtn: $("#send-button"),
-  stopBtn: $("#stop-button"),
-  newChatBtn: $("#new-chat-btn"),
-  healthDot: $("#health-dot"),
-  ragSwitch: $("#rag-switch"),
-};
-
-/* ==================================================================
-   UTILITIES
-   ================================================================== */
-function formatTime() {
-  const d = new Date();
-  return (
-    String(d.getHours()).padStart(2, "0") +
-    ":" +
-    String(d.getMinutes()).padStart(2, "0")
-  );
-}
-
-/* ==================================================================
-   LOCAL STORAGE PERSISTENCE
-   ================================================================== */
-const STORAGE_KEY = "aigtext_messages";
-const RAG_STORAGE_KEY = "aigtext_rag";
-
-function saveState() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.messages));
-    localStorage.setItem(RAG_STORAGE_KEY, JSON.stringify(state.ragEnabled));
-  } catch (_e) {}
-}
-
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) state.messages = JSON.parse(raw);
-    const r = localStorage.getItem(RAG_STORAGE_KEY);
-    if (r !== null) {
-      state.ragEnabled = JSON.parse(r);
-      if (dom.ragSwitch) dom.ragSwitch.checked = state.ragEnabled;
-    }
-  } catch (_e) {
-    state.messages = [state.messages[0]];
+  function formatTime() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, "0") + ":" +
+           String(d.getMinutes()).padStart(2, "0");
   }
-}
 
-function clearStoredMessages() {
-  try { localStorage.removeItem(STORAGE_KEY); } catch (_e) {}
-}
-
-/* ==================================================================
-   MARKDOWN FORMATTING
-   ================================================================== */
-function formatMarkdown(text) {
-  if (!text) return "";
-
-  let html = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-  // Code blocks ``` ... ```
-  html = html.replace(
-    /```(\w*)\n?([\s\S]*?)```/g,
-    (_, lang, code) =>
-      `<pre><code>${code.replace(/\n$/, "")}</code></pre>`
-  );
-
-  // Inline code `...`
-  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-  // Bold **...**
-  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-
-  // Italic *...*
-  html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-
-  // Line breaks
-  html = html.replace(/\n\n/g, "</p><p>");
-  html = html.replace(/\n/g, "<br>");
-
-  return "<p>" + html + "</p>";
-}
-
-/* ==================================================================
-   MESSAGE RENDERING
-   ================================================================== */
-function addMessage(role, content, isStreaming) {
-  hideEmptyState();
-
-  const el = document.createElement("div");
-  el.className = "message message--" + role;
-
-  const bubble = document.createElement("div");
-  bubble.className = "message__bubble";
-
-  const contentEl = document.createElement("div");
-  contentEl.className = "message__content";
-  contentEl.innerHTML = isStreaming ? content : formatMarkdown(content);
-
-  const timeEl = document.createElement("div");
-  timeEl.className = "message__time";
-  timeEl.textContent = formatTime();
-
-  bubble.appendChild(contentEl);
-  bubble.appendChild(timeEl);
-  el.appendChild(bubble);
-  dom.messages.appendChild(el);
-
-  scrollToBottom();
-  return contentEl;
-}
-
-function hideEmptyState() {
-  if (dom.emptyState && !dom.emptyState.classList.contains("hidden")) {
-    dom.emptyState.classList.add("hidden");
+  function escapeHtml(s) {
+    const div = document.createElement("div");
+    div.textContent = s;
+    return div.innerHTML;
   }
-}
 
-function renderStoredMessages() {
-  dom.messages.innerHTML = "";
-
-  const emptyDiv = document.createElement("div");
-  emptyDiv.id = "empty-state";
-  emptyDiv.className = "empty-state";
-  emptyDiv.innerHTML =
-    '<div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"></path></svg></div>' +
-    '<h2 class="empty-title">AIGText</h2>' +
-    '<p class="empty-subtitle">本地 LLM 聊天助手</p>';
-  dom.messages.appendChild(emptyDiv);
-  dom.emptyState = emptyDiv;
-
-  for (const msg of state.messages) {
-    if (msg.role === "system") continue;
-    addMessage(msg.role, msg.content, false);
+  function formatMd(text) {
+    if (!text) return "";
+    let html = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/```[\s\S]*?```/g, match => `<pre><code>${match.slice(3, -3)}</code></pre>`)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+      .replace(/\n/g, "<br>");
+    return "<p>" + html + "</p>";
   }
-}
 
-function scrollToBottom() {
-  requestAnimationFrame(() => {
+  function hideEmpty() {
+    if (dom.emptyState) dom.emptyState.style.display = "none";
+  }
+
+  function scrollToBottom() {
     dom.messages.scrollTop = dom.messages.scrollHeight;
-  });
-}
-
-/* ==================================================================
-   STREAMING CONTROLS
-   ================================================================== */
-function setStreaming(active) {
-  state.streaming = active;
-  dom.input.disabled = active;
-
-  if (active) {
-    dom.sendBtn.classList.add("hidden");
-    dom.stopBtn.classList.remove("hidden");
-  } else {
-    dom.sendBtn.classList.remove("hidden");
-    dom.stopBtn.classList.add("hidden");
   }
-}
 
-function stopGeneration() {
-  if (state.abortController) {
-    state.abortController.abort();
-    state.abortController = null;
+  function setStreaming(v) {
+    state.streaming = v;
+    dom.sendBtn.classList.toggle("hidden", v);
+    dom.stopBtn.classList.toggle("hidden", !v);
   }
-  if (state.activeStreamBubble) {
-    const bubble = state.activeStreamBubble;
-    const text = bubble.textContent || "";
-    if (text) {
-      state.messages.push({ role: "assistant", content: text });
-      saveState();
-      bubble.innerHTML = formatMarkdown(text);
+
+  function renderMessage(role, content) {
+    hideEmpty();
+    const div = document.createElement("div");
+    div.className = "message message--" + role;
+    div.innerHTML =
+      "<div class='message__bubble'>" +
+      "<div class='message__content'>" + formatMd(content) + "</div>" +
+      "<div class='message__time'>" + formatTime() + "</div>" +
+      "</div>";
+    dom.messages.appendChild(div);
+    scrollToBottom();
+    return div.querySelector(".message__content");
+  }
+
+  function handleSend() {
+    if (state.streaming) return;
+    const text = dom.input.value.trim();
+    if (!text && !state.pendingPhoto) return;
+
+    // 用户消息气泡
+    renderMessage("user", text || "[图片]");
+    state.messages.push({ role: "user", content: text, timestamp: Date.now() });
+    dom.input.value = "";
+
+    if (state.pendingPhoto) {
+      // 图片 + 文字 → vision API
+      sendVision(state.pendingPhoto.blob, text);
+      state.pendingPhoto = null;
+      dom.cameraThumb.classList.add("hidden");
+    } else {
+      // 纯文本聊天
+      streamChat(text);
     }
-    state.activeStreamBubble = null;
+    saveConversation();
   }
-  setStreaming(false);
-}
 
-function newChat() {
-  stopGeneration();
-  state.messages = [state.messages[0]]; // keep system message
-  clearStoredMessages();
-  saveState();
+  async function streamChat(userText) {
+    setStreaming(true);
+    state.abortController = new AbortController();
+    const aiEl = renderMessage("assistant", "");
+    let fullReply = "";
 
-  dom.messages.innerHTML = "";
-  const emptyDiv = document.createElement("div");
-  emptyDiv.id = "empty-state";
-  emptyDiv.className = "empty-state";
-  emptyDiv.innerHTML =
-    '<div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"></path></svg></div>' +
-    '<h2 class="empty-title">AIGText</h2>' +
-    '<p class="empty-subtitle">本地 LLM 聊天助手</p>';
-  dom.messages.appendChild(emptyDiv);
-  dom.emptyState = emptyDiv;
-}
+    try {
+      const resp = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-RAG-Enabled": String(state.ragEnabled),
+        },
+        body: JSON.stringify({
+          stream: true,
+          messages: [
+            { role: "system", content: "You are a helpful assistant." },
+            { role: "user", content: userText },
+          ],
+        }),
+        signal: state.abortController.signal,
+      });
 
-/* ==================================================================
-   SSE STREAMING
-   ================================================================== */
-async function streamChat(messages) {
-  const controller = new AbortController();
-  state.abortController = controller;
-  let fullContent = "";
-  let contentEl = null;
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
 
-  // Safety timeout: 5 minutes
-  const safetyTimer = setTimeout(() => {
-    if (state.streaming) controller.abort();
-  }, 300000);
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
 
-  try {
-    const resp = await fetch("/api/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-RAG-Enabled": state.ragEnabled ? "true" : "false",
-      },
-      body: JSON.stringify({
-        messages,
-        temperature: 0.7,
-        max_tokens: 1024,
-        stream: true,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => "Unknown error");
-      throw new Error(`HTTP ${resp.status}: ${errText}`);
-    }
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data:")) continue;
-
-        const data = trimmed.slice(5).trim();
-        if (data === "[DONE]") continue;
-
-        try {
-          const parsed = JSON.parse(data);
-          const delta = parsed.choices?.[0]?.delta?.content;
-          if (!delta) continue;
-
-          if (!contentEl) {
-            contentEl = addMessage("assistant", "", true);
-            state.activeStreamBubble = contentEl;
-          }
-
-          fullContent += delta;
-          contentEl.innerHTML = formatMarkdown(fullContent);
-          scrollToBottom();
-        } catch (_e) {
-          // Skip malformed SSE chunks
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") continue;
+          try {
+            const obj = JSON.parse(data);
+            const delta = obj.choices?.[0]?.delta?.content || "";
+            if (delta) {
+              fullReply += delta;
+              aiEl.innerHTML = formatMd(fullReply);
+              scrollToBottom();
+            }
+          } catch (e) {}
         }
       }
-    }
-  } catch (err) {
-    if (err.name === "AbortError") {
-      // User stopped generation — partial content already handled by stopGeneration
-      return;
-    }
-    // Network / server error
-    addMessage("assistant", err.message || "请求失败，请检查后端服务", false);
-  } finally {
-    clearTimeout(safetyTimer);
-    state.abortController = null;
 
-    if (fullContent && contentEl) {
-      state.messages.push({ role: "assistant", content: fullContent });
-      saveState();
-      contentEl.innerHTML = formatMarkdown(fullContent);
+      if (!fullReply) aiEl.innerHTML = formatMd("(无回复)");
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        aiEl.innerHTML = formatMd("发送失败: " + err.message);
+      }
+    } finally {
+      state.messages.push({ role: "assistant", content: fullReply, timestamp: Date.now() });
+      setStreaming(false);
+      state.abortController = null;
+      saveConversation();
     }
-    state.activeStreamBubble = null;
+  }
+
+  async function sendVision(blob, question) {
+    setStreaming(true);
+    const aiEl = renderMessage("assistant", "📷 识别中...");
+
+    const form = new FormData();
+    form.append("image", blob, "photo.jpg");
+    form.append("question", question || "");
+
+    try {
+      const resp = await fetch("/api/vision/query", {
+        method: "POST",
+        body: form,
+      });
+      const result = await resp.json();
+
+      let answer = "";
+      if (result.status === "ok") {
+        const cand = result.visual_candidates?.[0];
+        if (cand) answer += "**设备**: " + (cand.sub_category || cand.doc_id || "未知") + "\n\n";
+        if (result.answer) answer += result.answer;
+        else if (result.message) answer += result.message;
+      } else {
+        answer = result.message || result.error || "识别失败";
+      }
+      aiEl.innerHTML = formatMd(answer);
+      state.messages.push({ role: "assistant", content: answer, timestamp: Date.now(), metadata: { type: "vision_result" } });
+    } catch (err) {
+      aiEl.innerHTML = formatMd("识别失败: " + err.message);
+    } finally {
+      setStreaming(false);
+      saveConversation();
+    }
+  }
+
+  function stopGeneration() {
+    if (state.abortController) state.abortController.abort();
     setStreaming(false);
   }
-}
 
-/* ==================================================================
-   SEND HANDLER
-   ================================================================== */
-async function handleSend() {
-  const text = dom.input.value.trim();
-  if (!text || state.streaming) return;
+  // 图片选择
+  dom.galleryButton.addEventListener("click", () => dom.galleryInput.click());
+  dom.cameraButton.addEventListener("click", () => dom.cameraCaptureInput.click());
 
-  dom.input.value = "";
-  dom.input.style.height = "auto";
+  dom.galleryInput.addEventListener("change", e => {
+    const file = e.target.files[0];
+    if (file) showThumb(file);
+    dom.galleryInput.value = "";
+  });
 
-  // RAG mode: show status
-  showRagStatus(text);
+  dom.cameraCaptureInput.addEventListener("change", e => {
+    const file = e.target.files[0];
+    if (file) showThumb(file);
+    dom.cameraCaptureInput.value = "";
+  });
 
-  state.messages.push({ role: "user", content: text });
-  saveState();
-  addMessage("user", text, false);
-
-  setStreaming(true);
-
-  // Build API messages (send ALL history — RAG is injected server-side)
-  await streamChat(state.messages);
-}
-
-async function showRagStatus(query) {
-  // RAG status is server-side now, just a visual hint
-}
-
-/* ==================================================================
-   HEALTH CHECK
-   ================================================================== */
-async function checkHealth() {
-  const dot = dom.healthDot;
-  if (!dot) return;
-
-  dot.className = "health-dot checking";
-  dot.title = "检查中...";
-
-  try {
-    const resp = await fetch("/api/health", {
-      method: "GET",
-      signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined,
-    });
-    if (resp.ok) {
-      dot.className = "health-dot connected";
-      dot.title = "已连接";
-    } else {
-      dot.className = "health-dot error";
-      dot.title = "服务异常";
-    }
-  } catch (_e) {
-    dot.className = "health-dot error";
-    dot.title = "无法连接";
+  function showThumb(file) {
+    const url = URL.createObjectURL(file);
+    dom.cameraThumbImg.src = url;
+    dom.cameraThumb.classList.remove("hidden");
+    state.pendingPhoto = { blob: file, url: url };
   }
-}
 
-/* ==================================================================
-   INITIALIZATION
-   ================================================================== */
-function init() {
-  loadState();
-  if (dom.ragSwitch) dom.ragSwitch.checked = state.ragEnabled;
-  renderStoredMessages();
+  dom.cameraThumbRemove.addEventListener("click", () => {
+    dom.cameraThumb.classList.add("hidden");
+    state.pendingPhoto = null;
+  });
 
-  checkHealth();
-  state.healthTimer = setInterval(checkHealth, 30000);
-
-  // Send button
-  dom.sendBtn.addEventListener("click", handleSend);
-
-  // Stop button
-  dom.stopBtn.addEventListener("click", stopGeneration);
-
-  // New chat button
-  dom.newChatBtn.addEventListener("click", newChat);
-
-  // RAG toggle
+  // RAG 开关
+  dom.ragSwitch.checked = state.ragEnabled;
   dom.ragSwitch.addEventListener("change", () => {
     state.ragEnabled = dom.ragSwitch.checked;
-    saveState();
   });
 
-  // Auto-resize textarea
-  dom.input.addEventListener("input", () => {
-    dom.input.style.height = "auto";
-    dom.input.style.height = Math.min(dom.input.scrollHeight, 120) + "px";
+  // 事件绑定
+  dom.sendBtn.addEventListener("click", handleSend);
+  dom.stopBtn.addEventListener("click", stopGeneration);
+  dom.newChatBtn.addEventListener("click", () => {
+    state.messages = [];
+    dom.messages.innerHTML = "";
+    dom.emptyState.style.display = "flex";
+    state.conversationId = null;
   });
-
-  // Keyboard: Enter to send, Shift+Enter for newline
-  dom.input.addEventListener("keydown", (e) => {
+  dom.input.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   });
 
-  // Camera initialization
-  initCamera();
-}
+  // Sidebar
+  dom.sidebarToggle.addEventListener("click", () => {
+    dom.sidebar.classList.remove("hidden");
+    dom.sidebarOverlay.classList.remove("hidden");
+    loadConversations();
+  });
+  dom.sidebarClose.addEventListener("click", closeSidebar);
+  dom.sidebarOverlay.addEventListener("click", closeSidebar);
+  dom.sidebarNewBtn.addEventListener("click", newChat);
 
-document.addEventListener("DOMContentLoaded", init);
-
-/* ==================================================================
-   CAMERA + VISION API
-   ================================================================== */
-const cameraState = {
-  stream: null,
-  facingMode: "environment",
-  capturedBlob: null,
-};
-
-const cameraDom = {};
-
-function initCameraDOM() {
-  cameraDom.button = document.getElementById("camera-button");
-  cameraDom.modal = document.getElementById("camera-modal");
-  cameraDom.video = document.getElementById("camera-video");
-  cameraDom.capture = document.getElementById("camera-capture");
-  cameraDom.close = document.getElementById("camera-close");
-  cameraDom.flip = document.getElementById("camera-flip");
-  cameraDom.preview = document.getElementById("camera-preview");
-  cameraDom.previewImg = document.getElementById("camera-preview-img");
-  cameraDom.retake = document.getElementById("camera-retake");
-  cameraDom.confirm = document.getElementById("camera-confirm");
-  cameraDom.thumb = document.getElementById("camera-thumb");
-  cameraDom.thumbImg = document.getElementById("camera-thumb-img");
-  cameraDom.thumbRemove = document.getElementById("camera-thumb-remove");
-}
-
-function initCamera() {
-  initCameraDOM();
-
-  if (!cameraDom.button || !cameraDom.modal) return;
-
-  cameraDom.button.addEventListener("click", openCamera);
-  cameraDom.close.addEventListener("click", closeCamera);
-  cameraDom.capture.addEventListener("click", capturePhoto);
-  cameraDom.flip.addEventListener("click", flipCamera);
-  cameraDom.retake.addEventListener("click", retakePhoto);
-  cameraDom.confirm.addEventListener("click", confirmPhoto);
-  cameraDom.thumbRemove.addEventListener("click", removeThumbnail);
-}
-
-async function openCamera() {
-  if (state.streaming) return;
-
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    Toast.show("当前设备不支持相机");
-    return;
+  function closeSidebar() {
+    dom.sidebar.classList.add("hidden");
+    dom.sidebarOverlay.classList.add("hidden");
   }
 
-  cameraDom.modal.classList.remove("hidden");
-  cameraDom.modal.setAttribute("aria-hidden", "false");
-  cameraDom.preview.classList.add("hidden");
-  cameraDom.video.classList.remove("hidden");
-  cameraDom.capture.parentElement.classList.remove("hidden");
-
-  try {
-    cameraState.stream = await Camera.open(
-      cameraDom.video,
-      cameraState.facingMode
-    );
-  } catch (err) {
-    closeCamera();
-    if (err.name === "NotAllowedError") {
-      Toast.show("请允许相机权限后重试");
-    } else if (err.name === "NotFoundError") {
-      Toast.show("未检测到摄像头");
-    } else {
-      Toast.show("相机启动失败: " + (err.message || "未知错误"));
-    }
-  }
-}
-
-function closeCamera() {
-  if (cameraState.stream) {
-    Camera.stop(cameraState.stream);
-    cameraState.stream = null;
-  }
-  // Revoke preview blob URL to prevent memory leaks
-  if (cameraDom.previewImg && cameraDom.previewImg.src.startsWith("blob:")) {
-    URL.revokeObjectURL(cameraDom.previewImg.src);
-    cameraDom.previewImg.src = "";
-  }
-  cameraDom.video.srcObject = null;
-  cameraDom.modal.classList.add("hidden");
-  cameraDom.modal.setAttribute("aria-hidden", "true");
-}
-
-async function flipCamera() {
-  cameraState.facingMode =
-    cameraState.facingMode === "environment" ? "user" : "environment";
-
-  if (cameraState.stream) {
-    Camera.stop(cameraState.stream);
-    cameraState.stream = null;
-  }
-
-  try {
-    cameraState.stream = await Camera.open(
-      cameraDom.video,
-      cameraState.facingMode
-    );
-  } catch (err) {
-    Toast.show("切换摄像头失败");
-    cameraState.facingMode =
-      cameraState.facingMode === "environment" ? "user" : "environment";
-  }
-}
-
-async function capturePhoto() {
-  if (!cameraState.stream) return;
-
-  try {
-    cameraState.capturedBlob = await Camera.capture(cameraDom.video, 0.9);
-
-    const url = URL.createObjectURL(cameraState.capturedBlob);
-    cameraDom.previewImg.src = url;
-
-    cameraDom.video.classList.add("hidden");
-    cameraDom.capture.parentElement.classList.add("hidden");
-    cameraDom.preview.classList.remove("hidden");
-  } catch (err) {
-    Toast.show("拍照失败，请重试");
-  }
-}
-
-function retakePhoto() {
-  if (cameraDom.previewImg.src.startsWith("blob:")) {
-    URL.revokeObjectURL(cameraDom.previewImg.src);
-  }
-  cameraState.capturedBlob = null;
-  cameraDom.previewImg.src = "";
-  cameraDom.preview.classList.add("hidden");
-  cameraDom.video.classList.remove("hidden");
-  cameraDom.capture.parentElement.classList.remove("hidden");
-}
-
-async function confirmPhoto() {
-  if (!cameraState.capturedBlob) return;
-
-  const blob = cameraState.capturedBlob;
-
-  // Show thumbnail in input area
-  const url = URL.createObjectURL(blob);
-  cameraDom.thumbImg.src = url;
-  cameraDom.thumb.classList.remove("hidden");
-  cameraState.capturedBlob = blob;
-
-  closeCamera();
-
-  // Send for classification
-  await sendPhotoForClassification(blob);
-}
-
-function removeThumbnail() {
-  if (cameraDom.thumbImg.src.startsWith("blob:")) {
-    URL.revokeObjectURL(cameraDom.thumbImg.src);
-  }
-  cameraDom.thumbImg.src = "";
-  cameraDom.thumb.classList.add("hidden");
-  cameraState.capturedBlob = null;
-}
-
-/**
- * Map Visual RAG error codes to user-facing Chinese display text.
- */
-function visualErrorDisplayText(code) {
-  var messages = {
-    "INVALID_IMAGE": "图片无效，请重新拍摄清晰的设备照片",
-    "MODEL_NOT_READY": "识别模型未就绪，请稍后重试",
-    "INDEX_NOT_READY": "知识库索引未就绪，请稍后重试",
-    "NO_VISUAL_MATCH": "未识别到匹配的设备，请尝试不同角度或光线",
-  };
-  return messages[code] || "识别服务异常，请重试";
-}
-
-/**
- * Display Visual RAG API error as a system message + toast.
- */
-function displayVisualError(result, httpStatus) {
-  var errors = result.errors || [];
-  if (errors.length > 0) {
-    var code = errors[0].code;
-    var text = visualErrorDisplayText(code);
-    addMessage("system", "📷 " + text, false);
-    Toast.show(text, 4000);
-  } else {
-    var msg = "识别服务异常 (HTTP " + httpStatus + ")";
-    Toast.show(msg, 3000);
-  }
-}
-
-/**
- * Display full Visual RAG response: candidate summary, answer, status messages.
- * Does NOT trigger a duplicate /api/chat request when answer is already present.
- */
-function displayVisualRagResponse(result) {
-  var status = result.status || "";
-  var answer = result.answer;
-  var candidates = result.visual_candidates || [];
-  var errors = result.errors || [];
-  var coarseCategory = result.coarse_category;
-  var coarseConfidence = result.coarse_confidence;
-
-  hideEmptyState();
-
-  // Non-blocking error display
-  if (errors.length > 0) {
-    var errorTexts = errors.map(function(e) {
-      return visualErrorDisplayText(e.code) || e.message || "未知错误";
-    }).join("; ");
-    addMessage("system", "⚠ " + errorTexts, false);
-  }
-
-  // Candidate summary with labels and scores
-  if (candidates.length > 0) {
-    var candidateLines = candidates.map(function(c) {
-      var label = c.sub_category || c.coarse_category || "未知设备";
-      var score = c.score != null ? Math.round(c.score * 100) : 0;
-      return "<strong>" + label + "</strong> (" + score + "%)";
-    });
-    var categoryPrefix = "";
-    if (coarseCategory) {
-      var confPercent = coarseConfidence != null ? Math.round(coarseConfidence * 100) : 0;
-      categoryPrefix = "大类: <strong>" + coarseCategory + "</strong> (" + confPercent + "%) · ";
-    }
-    addVisionResultBubble(categoryPrefix, candidateLines);
-  } else if (status === "NO_VISUAL_MATCH") {
-    addMessage("system", "📷 " + visualErrorDisplayText("NO_VISUAL_MATCH"), false);
-  }
-
-  // Display answer directly as assistant message (NO duplicate /api/chat)
-  if (answer) {
-    addMessage("assistant", answer, false);
-    state.messages.push({ role: "assistant", content: answer });
-    saveState();
-  } else if (status === "OK" && candidates.length > 0) {
-    addMessage("system", "📷 已识别设备但未能生成回答，请尝试文本提问", false);
-  }
-}
-
-/**
- * Send captured photo to /api/vision/query
- * On success: display Visual RAG response with answer directly (no second /api/chat).
- * On error: display error text via toast and system message.
- */
-async function sendPhotoForClassification(blob) {
-  var closeLoading = Toast.loading("正在识别设备...");
-
-  try {
-    var formData = new FormData();
-    formData.append("image", blob, "photo.jpg");
-
-    // Include optional user question from the input
-    var userQuestion = dom.input.value.trim();
-    if (userQuestion) {
-      formData.append("question", userQuestion);
-    }
-
-    var resp = await fetch("/api/vision/query", {
+  async function newChat() {
+    state.conversationId = null;
+    state.messages = [];
+    dom.messages.innerHTML = "";
+    dom.emptyState.style.display = "flex";
+    closeSidebar();
+    const resp = await fetch("/api/conversations", {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "新对话" }),
     });
-
-    var result = await resp.json().catch(function() { return null; });
-    closeLoading();
-
-    if (!result) {
-      Toast.show("识别服务返回异常", 3000);
-      return;
-    }
-
-    if (!resp.ok) {
-      displayVisualError(result, resp.status);
-      return;
-    }
-
-    displayVisualRagResponse(result);
-
-  } catch (err) {
-    closeLoading();
-    Toast.show(
-      err.name === "TypeError"
-        ? "无法连接识别服务，请检查网络"
-        : "设备识别失败: " + (err.message || "未知错误"),
-      3000
-    );
+    const data = await resp.json();
+    state.conversationId = data.id;
   }
-}
 
-/**
- * Display a system-style bubble showing visual RAG candidate summary.
- * @param {string} categoryPrefix - coarse category info HTML fragment
- * @param {string[]} candidateLines - array of candidate HTML lines (label + score)
- */
-function addVisionResultBubble(categoryPrefix, candidateLines) {
-  hideEmptyState();
+  async function loadConversations() {
+    try {
+      const resp = await fetch("/api/conversations");
+      const list = await resp.json();
+      dom.sidebarList.innerHTML = "";
+      dom.sidebarEmpty.style.display = list.length ? "none" : "block";
+      list.forEach(conv => {
+        const item = document.createElement("div");
+        item.className = "sidebar-item";
+        item.innerHTML =
+          "<div class='sidebar-item-content'>" +
+          "<div class='sidebar-item-title'>" + escapeHtml(conv.title || "新对话") + "</div>" +
+          "</div>";
+        item.addEventListener("click", () => loadConversation(conv.id));
+        dom.sidebarList.appendChild(item);
+      });
+    } catch (e) {}
+  }
 
-  var el = document.createElement("div");
-  el.className = "message message--system";
+  async function loadConversation(id) {
+    try {
+      const resp = await fetch("/api/conversations/" + id);
+      const conv = await resp.json();
+      state.conversationId = id;
+      state.messages = conv.messages || [];
+      dom.messages.innerHTML = "";
+      conv.messages.forEach(m => renderMessage(m.role, m.content));
+      closeSidebar();
+    } catch (e) {}
+  }
 
-  var bubble = document.createElement("div");
-  bubble.className = "message__bubble";
+  async function saveConversation() {
+    if (!state.messages.length || !state.conversationId) return;
+    try {
+      await fetch("/api/conversations/" + state.conversationId, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: state.messages }),
+      });
+    } catch (e) {}
+  }
 
-  var contentEl = document.createElement("div");
-  contentEl.className = "message__content";
-  var summaryHtml = candidateLines.join(", ");
-  contentEl.innerHTML = "<p>📷 " + (categoryPrefix || "") + "候选: " + summaryHtml + "</p>";
+  // 初始化
+  async function init() {
+    // 自动创建/加载对话
+    const resp = await fetch("/api/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "新对话" }),
+    });
+    const data = await resp.json();
+    state.conversationId = data.id;
+  }
 
-  var timeEl = document.createElement("div");
-  timeEl.className = "message__time";
-  timeEl.textContent = formatTime();
-
-  bubble.appendChild(contentEl);
-  bubble.appendChild(timeEl);
-  el.appendChild(bubble);
-  dom.messages.appendChild(el);
-
-  scrollToBottom();
-}
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();

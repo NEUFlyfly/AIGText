@@ -101,12 +101,16 @@ const API = {
   },
 
   /** POST multipart form data */
-  async upload(path, formData) {
-    const resp = await fetch(this.BASE + path, {
-      method: 'POST',
-      body: formData,
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  async upload(path, formData, signal) {
+    var opts = { method: 'POST', body: formData };
+    if (signal) opts.signal = signal;
+    const resp = await fetch(this.BASE + path, opts);
+    if (!resp.ok) {
+      var body = null;
+      try { body = await resp.json(); } catch (_) { /* ignore parse errors */ }
+      var msg = body && body.message ? body.message : ('HTTP ' + resp.status);
+      throw new Error(msg);
+    }
     return resp.json();
   },
 
