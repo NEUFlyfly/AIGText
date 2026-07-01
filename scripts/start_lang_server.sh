@@ -61,7 +61,7 @@ for arg in "$@"; do
         echo "用法: bash scripts/start_lang_server.sh [选项]"
         echo ""
         echo "  --port PORT          前端端口 (默认: 8080)"
-        echo "  --vision-url URL     视觉后端地址 (默认: http://127.0.0.1:9101)"
+        echo "  --vision-url URL     视觉后端地址 (默认: http://127.0.0.1:9091)"
         echo "  --help, -h           显示此帮助"
         exit 0
     fi
@@ -185,7 +185,7 @@ echo "[frontend] 启动 (端口 $FRONTEND_PORT)..."
 if [ -n "$VISION_BACKEND_URL" ]; then
     echo "  视觉后端: $VISION_BACKEND_URL (来自 --vision-url)"
 else
-    VISION_BACKEND_URL="http://127.0.0.1:9101"
+    VISION_BACKEND_URL="http://127.0.0.1:9091"
     echo "  视觉后端: $VISION_BACKEND_URL (默认，使用 --vision-url 修改)"
 fi
 echo "  聊天页面: http://localhost:$FRONTEND_PORT/chat.html"

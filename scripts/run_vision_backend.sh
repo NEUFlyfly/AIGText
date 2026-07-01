@@ -23,9 +23,9 @@ fi
 
 # --- 默认配置 ---
 VISION_HOST="0.0.0.0"
-VISION_PORT=9101
+VISION_PORT=9091
 TAXONOMY_PATH="$REPO_ROOT/data/iot_knowledge/iot_taxonomy.json"
-REFERENCE_DIR="$REPO_ROOT/data/iot_knowledge/reference_images"
+REFERENCE_DIR="$REPO_ROOT/data/reference_images"
 
 # --- 解析参数 ---
 NEXT_IS_PORT=0
@@ -38,7 +38,7 @@ for arg in "$@"; do
         echo "AIGText 视觉后端启动脚本"
         echo "用法: bash scripts/run_vision_backend.sh [选项]"
         echo ""
-        echo "  --port PORT        监听端口 (默认: 9101)"
+        echo "  --port PORT        监听端口 (默认: 9091)"
         echo "  --host HOST        绑定地址 (默认: 0.0.0.0)"
         echo "  --taxonomy PATH    分类体系 JSON 路径"
         echo "  --reference-dir DIR  参考图片目录"
