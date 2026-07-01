@@ -86,20 +86,20 @@
     const text = raw || "";
     if (!text) return { think: "", answer: "" };
 
-    // 匹配开标签：<think> 或 <Think> 或 <think >
-    const openMatch = text.match(/<think\s*>/i);
+    // 匹配开标签：<think> <Think> <think > 或 <thinking> 等变体
+    const openMatch = text.match(/<think(?:ing)?\s*>/i);
     if (!openMatch || openMatch.index === undefined) {
       return { think: "", answer: text };
     }
 
     const bodyStart = openMatch.index + openMatch[0].length;
 
-    // 匹配闭标签：</think> 或 </Think> 或 </think >
+    // 匹配闭标签：</think> </Think> </think > 或 </thinking> 等变体
     const remainder = text.slice(bodyStart);
-    const closeMatch = remainder.match(/<\/think\s*>/i);
+    const closeMatch = remainder.match(/<\/think(?:ing)?\s*>/i);
 
     if (!closeMatch || closeMatch.index === undefined) {
-      // 流式中：闭标签未到，剩余全部作 think（之前 slice(bodyStart, -1) 的截断 bug）
+      // 流式中：闭标签未到，剩余全部作 think
       return { think: text.slice(bodyStart).trim(), answer: "" };
     }
 
@@ -107,8 +107,8 @@
     const thinkBody = text.slice(bodyStart, closeIdx).trim();
     const answerBody = text.slice(closeIdx + closeMatch[0].length).trim();
 
-    // 安全网：如果 answer 中意外残留 think 标签，递归剥离
-    if (/<think\s*>/i.test(answerBody)) {
+    // 安全网：如果 answer 中意外残留 think/thinking 标签，递归剥离
+    if (/<think(?:ing)?\s*>/i.test(answerBody)) {
       const nested = splitThinkAnswer(answerBody);
       return { think: thinkBody + (nested.think ? "\n" + nested.think : ""), answer: nested.answer };
     }
@@ -662,35 +662,80 @@
 
   async function sendVision(blob, question) {
     setStreaming(true);
+    state.abortController = new AbortController();
     const aiEl = renderMessage("assistant", "📷 识别中...");
 
     const form = new FormData();
     form.append("image", blob, "photo.jpg");
     form.append("question", question || "");
+    form.append("stream", "true");
+
+    let fullReply = "";
 
     try {
       const resp = await fetch("/api/vision/query", {
         method: "POST",
         body: form,
+        signal: state.abortController ? state.abortController.signal : undefined,
       });
-      const result = await resp.json();
 
-      let answer = "";
-      if (result.answer) {
-        answer += result.answer;
-      } else if (result.status === "ok" || result.status === "OK") {
-        const cand = result.visual_candidates?.[0];
-        if (cand) answer += "**设备**: " + (cand.sub_category || cand.doc_id || "未知") + "\n\n";
-        answer += result.message || "分析完成";
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+      // 检查响应类型：流式 SSE vs JSON
+      const ct = resp.headers.get("Content-Type") || "";
+      if (ct.indexOf("text/event-stream") !== -1) {
+        // 流式 SSE 响应
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6).trim();
+            if (data === "[DONE]") continue;
+            try {
+              const obj = JSON.parse(data);
+              const delta = obj.choices?.[0]?.delta?.content || "";
+              if (delta) {
+                fullReply += delta;
+                aiEl.innerHTML = renderAnswerBubble(fullReply);
+                scrollToBottom();
+              }
+            } catch (e) { /* 跳过非 JSON 行 */ }
+          }
+        }
+
+        if (!fullReply) aiEl.innerHTML = renderAnswerBubble("(无回复)");
       } else {
-        answer = result.message || result.error || "识别失败";
+        // 非流式（错误/降级）JSON 响应
+        const result = await resp.json();
+        let answer = "";
+        if (result.answer) {
+          answer += result.answer;
+        } else if (result.status === "ok" || result.status === "OK") {
+          const cand = result.visual_candidates?.[0];
+          if (cand) answer += "**设备**: " + (cand.sub_category || cand.doc_id || "未知") + "\n\n";
+          answer += result.message || "分析完成";
+        } else {
+          answer = result.message || result.error || "识别失败";
+        }
+        fullReply = answer;
+        aiEl.innerHTML = renderAnswerBubble(answer);
       }
-      aiEl.innerHTML = renderAnswerBubble(answer);
-      state.messages.push({ role: "assistant", content: answer, timestamp: Date.now(), metadata: { type: "vision_result" } });
+      state.messages.push({ role: "assistant", content: fullReply, timestamp: Date.now(), metadata: { type: "vision_result" } });
     } catch (err) {
-      aiEl.innerHTML = formatMd("识别失败: " + err.message);
+      if (err.name !== "AbortError") {
+        aiEl.innerHTML = formatMd("识别失败: " + err.message);
+      }
     } finally {
       setStreaming(false);
+      state.abortController = null;
       if (state.messages.length > 0) saveConversation();
     }
   }
@@ -877,8 +922,11 @@
     try {
       const blob = await Camera.capture(dom.cameraVideo, 0.9);
       state.cameraCapturedBlob = blob;
-      dom.cameraPreviewImg.src = URL.createObjectURL(blob);
-      dom.cameraPreview.classList.remove("hidden");
+      // 拍照后直接自动提交
+      showThumb(blob);
+      closeCameraModal();
+      state.cameraCapturedBlob = null;
+      handleSend();
     } catch (err) {
       console.error("Photo capture failed:", err);
     }
@@ -897,6 +945,7 @@
     showThumb(state.cameraCapturedBlob);
     closeCameraModal();
     state.cameraCapturedBlob = null;
+    handleSend();  // 拍照确认后自动提交
   }
 
   dom.cameraCloseBtn.addEventListener("click", closeCameraModal);

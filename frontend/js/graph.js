@@ -44,9 +44,9 @@
   window.addEventListener("resize", onResize);
   fetchData();
 
-  // Transform API data: flat taxonomy array → hierarchical tree
-  // taxonomy.json is an array of { doc_id, coarse_category, sub_category, document_path }
-  function normalizeData(raw) {
+  // Transform API data: v2.0 taxonomy tree → hierarchical node tree
+  // iot_taxonomy.json is { version, coarse_categories: [{ id, name, sub_categories: [...] }] }
+  function normalizeData(data) {
     var root = {
       id: "root",
       name: "物联网设备知识图谱",
@@ -55,52 +55,29 @@
       children: []
     };
 
-    // Group entries by coarse_category, preserving first-seen order
-    var coarseMap = {};
-    var coarseOrder = [];
-    var arr = Array.isArray(raw) ? raw : [];
-    arr.forEach(function (entry) {
-      var cc = entry.coarse_category || "未分类";
-      if (!coarseMap[cc]) {
-        coarseMap[cc] = { seen: false, subs: {}, entries: [] };
-      }
-      if (!coarseMap[cc].seen) {
-        coarseMap[cc].seen = true;
-        coarseOrder.push(cc);
-      }
-      // Collect entries by sub_category
-      var sc = entry.sub_category || cc;
-      if (!coarseMap[cc].subs[sc]) {
-        coarseMap[cc].subs[sc] = [];
-      }
-      coarseMap[cc].subs[sc].push(entry);
-    });
+    var cats = (data && data.coarse_categories) ? data.coarse_categories : [];
 
-    coarseOrder.forEach(function (cc) {
-      // 大类的描述取第一个文档
-      var firstEntry = Object.values(coarseMap[cc].subs)[0];
-      if (firstEntry && firstEntry.length > 0) {
-        firstEntry = firstEntry[0];
-      }
+    cats.forEach(function (cat) {
       var cn = {
-        id: cc,
-        name: cc,
-        desc: "",
-        document_path: firstEntry ? firstEntry.document_path : "",
+        id: cat.id || cat.name || "未分类",
+        name: cat.name || cat.id || "未分类",
+        desc: cat.description || "",
+        document_path: "",
         level: "coarse",
         children: []
       };
-      Object.keys(coarseMap[cc].subs).forEach(function (sc) {
-        var entries = coarseMap[cc].subs[sc];
+
+      (cat.sub_categories || []).forEach(function (sub) {
         cn.children.push({
-          id: sc,
-          name: sc,
-          desc: "",
-          document_path: entries[0] ? entries[0].document_path : "",
+          id: sub.id,
+          name: sub.name,
+          desc: sub.description || "",
+          document_path: "data/iot_knowledge/" + (cat.id || cn.id) + "/" + (sub.id) + "/document.md",
           level: "sub",
           children: []
         });
       });
+
       root.children.push(cn);
     });
 
@@ -108,7 +85,7 @@
   }
 
   function fetchData() {
-    fetch("../data/iot_knowledge/taxonomy.json")
+    fetch("../data/iot_knowledge/iot_taxonomy.json")
       .then(function (r) { if (!r.ok) throw Error(r.status); return r.json(); })
       .then(function (data) {
         S.root = normalizeData(data);

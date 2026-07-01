@@ -362,7 +362,7 @@ class FrontendHandler(SimpleHTTPRequestHandler):
 
     def _handle_visual_query(self, *, include_device_class: bool) -> None:
         try:
-            image_bytes, question, top_k = _parse_visual_multipart_request(self)
+            image_bytes, question, top_k, is_stream = _parse_visual_multipart_request(self)
         except ValueError as exc:
             self._send_json(_visual_error_response("INVALID_IMAGE", str(exc)), 400)
             return
@@ -401,8 +401,37 @@ class FrontendHandler(SimpleHTTPRequestHandler):
 
         prompt = _string_or_none(payload.get("augmented_prompt"))
         if prompt:
+            llm_payload = {
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.2,
+                "max_tokens": 1024,
+                "stream": is_stream,
+            }
+            llm_body = json.dumps(llm_payload, ensure_ascii=False).encode("utf-8")
+            llm_req = urllib.request.Request(
+                f"{self.backend_url}/v1/chat/completions",
+                data=llm_body,
+                headers={"Content-Type": "application/json"},
+            )
+
             try:
-                response_payload["answer"] = _request_llama_answer(self.backend_url, prompt)
+                with urllib.request.urlopen(llm_req, timeout=300) as llm_resp:
+                    if is_stream:
+                        self.send_response(200)
+                        self._send_cors()
+                        self.send_header("Content-Type", "text/event-stream")
+                        self.send_header("Cache-Control", "no-cache")
+                        self.send_header("X-Accel-Buffering", "no")
+                        self.end_headers()
+                        try:
+                            for raw_line in llm_resp:
+                                self.wfile.write(raw_line)
+                                self.wfile.flush()
+                        except Exception:
+                            pass  # client disconnected
+                        return  # streaming done, no JSON response
+                    else:
+                        response_payload["answer"] = _request_llama_answer(self.backend_url, prompt)
             except Exception as exc:
                 error_payload = _visual_response_payload(
                     payload,
@@ -747,7 +776,7 @@ def _get_vision_backend_client():
 
 def _parse_visual_multipart_request(
     handler: SimpleHTTPRequestHandler,
-) -> tuple[bytes, str, int | None]:
+) -> tuple[bytes, str, int | None, bool]:
     content_type = handler.headers.get("Content-Type", "")
     if not content_type.lower().startswith("multipart/form-data"):
         raise ValueError("Expected multipart/form-data with an image field")
@@ -770,6 +799,7 @@ def _parse_visual_multipart_request(
     question_value: str | None = None
     query_value: str | None = None
     top_k: int | None = None
+    stream_value: bool = False
     for part in message.iter_parts():
         name = part.get_param("name", header="content-disposition")
         if name == "image":
@@ -786,11 +816,15 @@ def _parse_visual_multipart_request(
                 query_value = decoded_value
             elif name == "top_k" and decoded_value:
                 top_k = _parse_positive_int(decoded_value, "top_k")
+        elif name == "stream":
+            raw_value = part.get_payload(decode=True)
+            value_bytes = raw_value if isinstance(raw_value, bytes) else b""
+            stream_value = value_bytes.decode("utf-8", errors="replace").strip().lower() == "true"
 
     if not image_bytes:
         raise ValueError("Missing required image upload")
     _validate_image_upload(image_bytes)
-    return image_bytes, question_value or query_value or DEFAULT_VISUAL_QUESTION, top_k
+    return image_bytes, question_value or query_value or DEFAULT_VISUAL_QUESTION, top_k, stream_value
 
 
 def _parse_positive_int(value: str, field_name: str) -> int:
