@@ -377,6 +377,22 @@
       const emptyEl = document.createElement("div");
       emptyEl.className = "compare-photo compare-photo--empty";
       emptyEl.innerHTML = `<span class="compare-photo-placeholder">+</span>`;
+      emptyEl.title = "点击添加对比照片";
+      emptyEl.style.cursor = "pointer";
+      emptyEl.addEventListener("click", () => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "image/*";
+        input.multiple = true;
+        input.addEventListener("change", () => {
+          Array.from(input.files).forEach(file => {
+            if (state.comparePhotos.length >= 3) return;
+            state.comparePhotos.push({ blob: file, url: URL.createObjectURL(file) });
+          });
+          renderCompareStrip();
+        });
+        input.click();
+      });
       dom.compareStrip.appendChild(emptyEl);
     }
 
@@ -669,7 +685,7 @@
       } else {
         answer = result.message || result.error || "识别失败";
       }
-      aiEl.innerHTML = formatMd(answer);
+      aiEl.innerHTML = renderAnswerBubble(answer);
       state.messages.push({ role: "assistant", content: answer, timestamp: Date.now(), metadata: { type: "vision_result" } });
     } catch (err) {
       aiEl.innerHTML = formatMd("识别失败: " + err.message);
