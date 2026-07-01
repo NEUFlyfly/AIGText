@@ -162,6 +162,8 @@ class FrontendHandler(SimpleHTTPRequestHandler):
             self._handle_visual_query(include_device_class=False)
         elif path == "/api/vision/classify":
             self._handle_visual_query(include_device_class=True)
+        elif path == "/api/vision/compare":
+            self._handle_visual_compare()
         elif path == "/api/conversations":
             self._create_conversation()
         elif path.startswith("/api/conversations/"):
@@ -394,6 +396,95 @@ class FrontendHandler(SimpleHTTPRequestHandler):
                 return
 
         self._send_json(response_payload, 200)
+
+    def _handle_visual_compare(self) -> None:
+        """POST /api/vision/compare — 多图设备对比"""
+        try:
+            images, question, top_k = _parse_compare_multipart(self)
+        except ValueError as exc:
+            self._send_json(_visual_error_response("INVALID_IMAGE", str(exc)), 400)
+            return
+
+        visual_results: list[dict[str, object]] = []
+
+        try:
+            for i, img_bytes in enumerate(images):
+                try:
+                    result = _run_dual_host_visual_query(img_bytes, question, top_k)
+                    candidates = _candidate_list(result.get("visual_candidates"))
+                    raw_chunks = result.get("retrieved_chunks", [])
+                    chunks = [
+                        dict(chunk)
+                        for chunk in raw_chunks
+                        if isinstance(chunk, dict)
+                    ] if isinstance(raw_chunks, list) else []
+                    visual_results.append({
+                        "image_index": i,
+                        "candidates": candidates,
+                        "chunks": chunks,
+                        "status": result.get("status", "OK"),
+                    })
+                except Exception as exc:
+                    visual_results.append({
+                        "image_index": i,
+                        "candidates": [],
+                        "chunks": [],
+                        "status": "VISION_BACKEND_UNAVAILABLE",
+                        "error": str(exc),
+                    })
+        except _vision_backend_unavailable_errors() as exc:
+            self._send_json(
+                _visual_error_response("VISION_BACKEND_UNAVAILABLE", str(exc), retryable=True),
+                503,
+            )
+            return
+
+        if not any(r.get("candidates") for r in visual_results):
+            self._send_json({
+                "status": "NO_VISUAL_MATCH",
+                "message": "所有图片均未识别到设备",
+                "visual_results": visual_results,
+                "answer": "",
+            }, 200)
+            return
+
+        # 构建对比提示词
+        parts: list[str] = []
+        for vr in visual_results:
+            i = vr["image_index"]
+            cands = vr.get("candidates", [])
+            chunks_list = vr.get("chunks", [])
+            img_num = int(i) + 1 if isinstance(i, int) else 1
+            parts.append(f"## 图片 {img_num}\n")
+            if isinstance(cands, list) and cands:
+                parts.append("视觉识别结果：\n")
+                parts.append(_format_candidate_summary(cands))
+                parts.append("\n")
+            if isinstance(chunks_list, list) and chunks_list:
+                parts.append("参考资料：\n")
+                parts.append(_format_text_sources(chunks_list))
+                parts.append("\n")
+            else:
+                parts.append("参考资料：未检索到可引用的文档文本片段。\n")
+        comparison_data = "\n".join(parts)
+
+        prompt = render_prompt("compare_prompt", comparison_data=comparison_data, query=question or "")
+        try:
+            answer = _request_llama_answer(self.backend_url, prompt)
+        except Exception as exc:
+            self._send_json({
+                "status": "MODEL_NOT_READY",
+                "message": str(exc),
+                "visual_results": visual_results,
+                "answer": "",
+            }, 503)
+            return
+
+        self._send_json({
+            "status": "OK",
+            "visual_results": visual_results,
+            "answer": answer,
+        }, 200)
 
     # ------------------------------------------------------------------
     # 工具
@@ -633,6 +724,64 @@ def _validate_image_upload(image_bytes: bytes) -> None:
             image.verify()
     except Exception as exc:
         raise ValueError("INVALID_IMAGE") from exc
+
+
+def _parse_compare_multipart(
+    handler: SimpleHTTPRequestHandler,
+) -> tuple[list[bytes], str, int | None]:
+    """解析对比模式的多图片 multipart 请求，返回 (图片列表, 问题, top_k)。"""
+    content_type = handler.headers.get("Content-Type", "")
+    if not content_type.lower().startswith("multipart/form-data"):
+        raise ValueError("Expected multipart/form-data with image fields")
+
+    content_length = int(handler.headers.get("Content-Length", 0))
+    if content_length <= 0:
+        raise ValueError("Missing multipart request body")
+
+    body = handler.rfile.read(content_length)
+    message = BytesParser(policy=default).parsebytes(
+        b"Content-Type: "
+        + content_type.encode("utf-8")
+        + b"\r\nMIME-Version: 1.0\r\n\r\n"
+        + body
+    )
+    if not message.is_multipart():
+        raise ValueError("Invalid multipart/form-data body")
+
+    images: list[bytes] = []
+    question_value: str | None = None
+    query_value: str | None = None
+    top_k: int | None = None
+
+    for part in message.iter_parts():
+        name = part.get_param("name", header="content-disposition")
+        img_names = {"image_0", "image_1", "image_2"}
+        if name in img_names:
+            raw_image = part.get_payload(decode=True)
+            img_bytes = raw_image if isinstance(raw_image, bytes) else b""
+            if img_bytes:
+                images.append(img_bytes)
+        elif name in {"question", "query", "top_k"}:
+            raw_value = part.get_payload(decode=True)
+            value_bytes = raw_value if isinstance(raw_value, bytes) else b""
+            charset = part.get_content_charset() or "utf-8"
+            decoded_value = value_bytes.decode(charset, errors="replace").strip()
+            if name == "question" and decoded_value:
+                question_value = decoded_value
+            elif name == "query" and decoded_value:
+                query_value = decoded_value
+            elif name == "top_k" and decoded_value:
+                top_k = _parse_positive_int(decoded_value, "top_k")
+
+    if len(images) < 2:
+        raise ValueError("对比模式需要至少 2 张图片")
+    if len(images) > 3:
+        images = images[:3]
+
+    for img_bytes in images:
+        _validate_image_upload(img_bytes)
+
+    return images, question_value or query_value or DEFAULT_VISUAL_QUESTION, top_k
 
 
 def _run_dual_host_visual_query(

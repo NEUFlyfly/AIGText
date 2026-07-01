@@ -18,6 +18,8 @@
     voiceTranscript: "",
     audioChunks: [],
     lastSpokenText: "",
+    compareMode: false,
+    comparePhotos: [],  // Array of { blob, url }
   };
 
   const dom = {
@@ -45,6 +47,8 @@
     cameraThumbRemove: document.getElementById("camera-thumb-remove"),
     voiceToggleBtn: document.getElementById("voice-toggle-btn"),
     voiceMicBtn: document.getElementById("voice-mic-btn"),
+    compareToggleBtn: document.getElementById("compare-toggle-btn"),
+    compareStrip: document.getElementById("compare-strip"),
     // voiceFields set in toggleVoiceMode
   };
 
@@ -98,6 +102,19 @@
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
+      // 表格（必须在 \n → <br> 之前处理）
+      .replace(/(^\|[^\n]*\|\n^\|[-:\s|]*\|\n(?:^\|.*\|\n?)+)/gm, function(match) {
+        const rows = match.trim().split("\n");
+        let table = "<table>";
+        rows.forEach(function(row, i) {
+          if (i === 1 && /^[\|\s\-:]+$/.test(row)) return; // skip separator row
+          const cells = row.split("|").map(function(c) { return c.trim(); }).filter(Boolean);
+          const tag = i === 0 ? "th" : "td";
+          table += "<tr>" + cells.map(function(c) { return "<" + tag + ">" + c + "</" + tag + ">"; }).join("") + "</tr>";
+        });
+        table += "</table>";
+        return table;
+      })
       .replace(/```[\s\S]*?```/g, match => `<pre><code>${match.slice(3, -3)}</code></pre>`)
       .replace(/`([^`]+)`/g, "<code>$1</code>")
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
@@ -145,7 +162,12 @@
     hideEmpty();
     const div = document.createElement("div");
     div.className = "message message--" + role;
-    const imageHtml = imageUrl ? `<img class="message__user-image" src="${imageUrl}">` : "";
+    let imageHtml = "";
+    if (Array.isArray(imageUrl) && imageUrl.length) {
+      imageHtml = imageUrl.map(url => `<img class="message__user-image" src="${url}">`).join("");
+    } else if (imageUrl) {
+      imageHtml = `<img class="message__user-image" src="${imageUrl}">`;
+    }
 
     // user/assistant 加头像；system/error 不加
     const avatarHtml = (role === "user" || role === "assistant")
@@ -176,6 +198,13 @@
 
   async function handleSend() {
     if (state.streaming) return;
+
+    if (state.compareMode && state.comparePhotos.length >= 2) {
+      await ensureConversation();
+      sendCompare();
+      return;
+    }
+
     const text = dom.input.value.trim();
     if (!text && !state.pendingPhoto) return;
 
@@ -217,6 +246,18 @@
       dom.voiceMicBtn.classList.remove("hidden");
       ensureVoiceStatus();
       updateVoiceStatus("", "🎤", "点击麦克风开始录音");
+
+      // Turn off compare mode (mutually exclusive)
+      if (state.compareMode) {
+        state.compareMode = false;
+        document.body.classList.remove("compare-mode");
+        dom.compareToggleBtn.classList.remove("active");
+        state.comparePhotos.forEach(p => URL.revokeObjectURL(p.url));
+        state.comparePhotos = [];
+        renderCompareStrip();
+        dom.compareStrip.classList.add("hidden");
+        dom.input.placeholder = "输入消息...";
+      }
     } else {
       app.classList.remove("voice-mode-active");
       dom.voiceToggleBtn.classList.remove("active");
@@ -227,6 +268,69 @@
       stopSpeaking();
       stopVoiceRecording();
     }
+  }
+
+  // ── Compare mode ──
+
+  function toggleCompareMode() {
+    state.compareMode = !state.compareMode;
+
+    if (state.compareMode) {
+      // Turn off voice mode (mutually exclusive)
+      if (state.voiceMode) {
+        state.voiceMode = false;
+        const app = document.getElementById("app");
+        app.classList.remove("voice-mode-active");
+        dom.voiceToggleBtn.classList.remove("active");
+        dom.input.style.display = "";
+        dom.sendBtn.style.display = "";
+        dom.voiceMicBtn.classList.add("hidden");
+        removeVoiceStatus();
+        stopSpeaking();
+        stopVoiceRecording();
+      }
+      document.body.classList.add("compare-mode");
+      dom.compareToggleBtn.classList.add("active");
+      dom.compareStrip.classList.remove("hidden");
+      dom.input.placeholder = "输入对比需求...";
+    } else {
+      document.body.classList.remove("compare-mode");
+      dom.compareToggleBtn.classList.remove("active");
+      dom.compareStrip.classList.add("hidden");
+      state.comparePhotos = [];
+      renderCompareStrip();
+      dom.input.placeholder = "输入消息...";
+    }
+  }
+
+  function renderCompareStrip() {
+    dom.compareStrip.innerHTML = "";
+
+    state.comparePhotos.forEach((photo, index) => {
+      const el = document.createElement("div");
+      el.className = "compare-photo";
+      el.innerHTML =
+        `<img src="${photo.url}" alt="对比照片 ${index + 1}">` +
+        `<button class="compare-photo-remove" data-index="${index}" aria-label="移除照片">&times;</button>`;
+      dom.compareStrip.appendChild(el);
+    });
+
+    if (state.comparePhotos.length < 3) {
+      const emptyEl = document.createElement("div");
+      emptyEl.className = "compare-photo compare-photo--empty";
+      emptyEl.innerHTML = `<span class="compare-photo-placeholder">+</span>`;
+      dom.compareStrip.appendChild(emptyEl);
+    }
+
+    // Bind remove handlers
+    dom.compareStrip.querySelectorAll(".compare-photo-remove").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const idx = parseInt(btn.dataset.index, 10);
+        const removed = state.comparePhotos.splice(idx, 1)[0];
+        if (removed) URL.revokeObjectURL(removed.url);
+        renderCompareStrip();
+      });
+    });
   }
 
   function ensureVoiceStatus() {
@@ -408,13 +512,6 @@
       window.speechSynthesis.speak(utterance);
     });
   }
-        }, 200);
-      }
-    };
-
-    // 不 cancel — 让浏览器自然排队播放
-    window.speechSynthesis.speak(utterance);
-  }
 
   function stopSpeaking() {
     if ("speechSynthesis" in window) {
@@ -523,6 +620,76 @@
     }
   }
 
+  async function sendCompare() {
+    setStreaming(true);
+    const question = dom.input.value.trim();
+    dom.input.value = "";
+
+    // Render user message with embedded images
+    const imageElementsHtml = state.comparePhotos
+      .map(p => `<img class="message__user-image" src="${p.url}" alt="对比照片">`)
+      .join("");
+
+    hideEmpty();
+    const userDiv = document.createElement("div");
+    userDiv.className = "message message--user";
+    userDiv.innerHTML =
+      `<div class="message__avatar message__avatar--user">🧑</div>` +
+      `<div class="message__bubble">` +
+        imageElementsHtml +
+        (question ? `<div class="message__content">${formatMd(question)}</div>` : "") +
+        `<div class="message__time">${formatTime()}</div>` +
+      `</div>`;
+    dom.messages.appendChild(userDiv);
+    scrollToBottom();
+
+    // Save photos as data URLs for persistence
+    const imageDataUrls = await Promise.all(
+      state.comparePhotos.map(p => fileToDataUrl(p.blob))
+    );
+    state.messages.push({
+      role: "user",
+      content: question,
+      timestamp: Date.now(),
+      image_data: imageDataUrls,
+    });
+
+    // Show AI bubble
+    const aiEl = renderMessage("assistant", "🔬 对比分析中...");
+
+    const form = new FormData();
+    state.comparePhotos.forEach((photo, i) => {
+      form.append(`image_${i}`, photo.blob, `compare_${i}.jpg`);
+    });
+    form.append("question", question || "");
+
+    try {
+      const resp = await fetch("/api/vision/compare", {
+        method: "POST",
+        body: form,
+      });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const result = await resp.json();
+      const answer = result.answer || result.message || "对比分析完成";
+      aiEl.innerHTML = renderAnswerBubble(answer);
+      state.messages.push({
+        role: "assistant",
+        content: answer,
+        timestamp: Date.now(),
+        metadata: { type: "compare_result" },
+      });
+    } catch (err) {
+      aiEl.innerHTML = formatMd("对比分析失败: " + err.message);
+    } finally {
+      // Clean up compare photos
+      state.comparePhotos.forEach(p => URL.revokeObjectURL(p.url));
+      state.comparePhotos = [];
+      renderCompareStrip();
+      setStreaming(false);
+      if (state.messages.length > 0) saveConversation();
+    }
+  }
+
   function stopGeneration() {
     if (state.abortController) state.abortController.abort();
     setStreaming(false);
@@ -545,6 +712,13 @@
   });
 
   function showThumb(file) {
+    if (state.compareMode) {
+      if (state.comparePhotos.length >= 3) return;
+      state.comparePhotos.push({ blob: file, url: URL.createObjectURL(file) });
+      renderCompareStrip();
+      dom.cameraThumb.classList.add("hidden");
+      return;
+    }
     const url = URL.createObjectURL(file);
     dom.cameraThumbImg.src = url;
     dom.cameraThumb.classList.remove("hidden");
@@ -566,6 +740,7 @@
   dom.sendBtn.addEventListener("click", handleSend);
   dom.stopBtn.addEventListener("click", stopGeneration);
   dom.voiceToggleBtn.addEventListener("click", toggleVoiceMode);
+  dom.compareToggleBtn.addEventListener("click", toggleCompareMode);
   dom.voiceMicBtn.addEventListener("click", () => {
     if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
       stopVoiceRecording();

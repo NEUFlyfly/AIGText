@@ -60,6 +60,14 @@
               <line x1="8" y1="23" x2="16" y2="23"/>
             </svg>
           </button>
+          <button id="compare-toggle-btn" class="icon-btn" title="对比模式" aria-label="切换设备对比模式">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="9" height="18" rx="2"/>
+              <rect x="13" y="3" width="9" height="18" rx="2"/>
+              <line x1="6.5" y1="9" x2="6.5" y2="15"/>
+              <line x1="15.5" y1="9" x2="15.5" y2="15"/>
+            </svg>
+          </button>
           <button id="new-chat-btn" class="icon-btn" title="新对话" aria-label="开始新对话">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -77,6 +85,8 @@
         <span class="rag-slider"></span>
       </label>
     </div>
+
+    <div id="compare-strip" class="compare-strip hidden"></div>
 
     <main id="messages" aria-live="polite" aria-label="聊天消息">
       <div id="empty-state" class="empty-state">

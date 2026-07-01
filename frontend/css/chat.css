@@ -1138,3 +1138,109 @@ body::after {
   0% { transform: scaleY(0.3); }
   100% { transform: scaleY(1.2); }
 }
+
+/* ==================================================================
+   COMPARE MODE — 设备对比
+   ================================================================== */
+
+/* Compare toggle button active state */
+#compare-toggle-btn.active {
+  background: var(--accent-blue);
+  color: #fff;
+  border-radius: var(--radius-sm);
+}
+
+/* Compare photo strip */
+.compare-strip {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-lg);
+  overflow-x: auto;
+  background: #f8f9fb;
+  border-bottom: 1px solid var(--border-light);
+  animation: fadeUp var(--duration-normal) var(--ease-out);
+}
+.compare-strip.hidden { display: none; }
+
+.compare-photo {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 2px solid var(--border-light);
+  background: #fff;
+  transition: transform var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
+}
+.compare-photo:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+.compare-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.compare-photo--empty {
+  border-style: dashed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.compare-photo--empty:hover {
+  border-color: var(--accent-blue);
+}
+.compare-photo-placeholder {
+  font-size: var(--font-size-lg);
+  color: var(--text-muted);
+  line-height: 1;
+  user-select: none;
+}
+.compare-photo-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  border: none;
+  font-size: var(--font-size-xs);
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.compare-photo-remove:hover {
+  background: var(--accent-red);
+}
+
+/* ===== Markdown table in messages ===== */
+.message__content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.message__content th,
+.message__content td {
+  padding: 6px 10px;
+  border: 1px solid var(--border-light);
+  text-align: left;
+}
+.message__content th {
+  background: #f5f6fa;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.message__content td {
+  color: var(--text-secondary);
+}
+.message__content tr:nth-child(even) td {
+  background: #fafbfd;
+}

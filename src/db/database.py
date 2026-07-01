@@ -3,6 +3,7 @@ AIGText — Conversation History Database
 SQLite-based persistent storage for chat conversations.
 """
 import sqlite3
+import json
 import os
 import uuid
 import threading
@@ -115,10 +116,13 @@ def save_messages(cid, messages):
     conn.execute("DELETE FROM messages WHERE conversation_id = ?", (cid,))
     now = _now()
     for msg in messages:
+        img_data = msg.get("image_data")
+        if isinstance(img_data, list):
+            img_data = json.dumps(img_data, ensure_ascii=False)
         conn.execute(
             "INSERT INTO messages (conversation_id, role, content, image_data, created_at) VALUES (?, ?, ?, ?, ?)",
              (cid, msg.get("role", "user"), msg.get("content", ""),
-              msg.get("image_data"), now)
+              img_data, now)
         )
     # Auto-title: use first user message (first 30 chars)
     first_user = next((m for m in messages if m.get("role") == "user"), None)
