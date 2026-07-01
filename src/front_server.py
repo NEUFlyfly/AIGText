@@ -72,6 +72,7 @@ _VISUAL_READY_STATUSES = {
     "MODEL_NOT_READY",
     "INDEX_NOT_READY",
     "VISION_BACKEND_UNAVAILABLE",
+    "error",
 }
 _VISUAL_HTTP_503_STATUSES = {
     "MODEL_NOT_READY",
@@ -941,7 +942,7 @@ def _visual_payload(
     augmented_prompt: str,
     status: str,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "coarse_category": _string_or_none(visual_result.get("coarse_category")),
         "coarse_confidence": _float_or_none(visual_result.get("coarse_confidence")),
         "coarse_status": _string_or_none(visual_result.get("coarse_status")),
@@ -950,6 +951,15 @@ def _visual_payload(
         "augmented_prompt": augmented_prompt,
         "status": status,
     }
+    # Forward the human-readable message from vision backend (if present)
+    message = _string_or_none(visual_result.get("message"))
+    if message:
+        payload["message"] = message
+    # Forward error details from vision backend (if present)
+    error_field = _string_or_none(visual_result.get("error"))
+    if error_field:
+        payload["error"] = error_field
+    return payload
 
 
 def _candidate_list(value: object) -> list[dict[str, object]]:
@@ -1111,6 +1121,12 @@ def _visual_response_payload(
         "answer": answer,
         "errors": errors,
     }
+    message = _string_or_none(payload.get("message"))
+    if message:
+        response["message"] = message
+    error_field = _string_or_none(payload.get("error"))
+    if error_field:
+        response["error"] = error_field
     if include_device_class:
         response["device_class"] = _device_class(visual_candidates)
     return response
@@ -1229,11 +1245,19 @@ def _extract_llama_answer(payload: object) -> str | None:
 
 def _visual_status_message(status: str) -> str:
     if status == "VISION_BACKEND_UNAVAILABLE":
-        return "Vision backend is unavailable"
+        return "视觉后端不可用，请确认视觉后端已启动"
     if status == "INDEX_NOT_READY":
-        return "Visual or text index is not ready"
+        return "视觉或文本索引尚未就绪"
     if status == "MODEL_NOT_READY":
-        return "Visual RAG model is not ready"
+        return "视觉 RAG 模型尚未就绪"
+    if status == "NO_VISUAL_MATCH":
+        return "图片中未识别到 IoT 设备，请上传清晰的开发板或模块照片"
+    if status == "LOW_CONFIDENCE":
+        return "识别置信度较低，请尝试不同角度或更清晰的图片"
+    if status == "NO_TEXT_CHUNKS":
+        return "已识别设备类型，但未找到相关的知识文档"
+    if status == "error":
+        return "视觉后端分类出现错误，请重试"
     return status
 
 

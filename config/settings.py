@@ -18,7 +18,7 @@ class Settings:
     HOST_A_PORT: int = 8080
     VISION_BACKEND_URL: str = 'http://127.0.0.1:9101'
     VISION_BACKEND_API_KEY: str = ''
-    VISION_BACKEND_TIMEOUT_SECONDS: float = 30.0
+    VISION_BACKEND_TIMEOUT_SECONDS: float = 180.0
     VISION_FALLBACK_MODE: str = 'error'
     VISUAL_TOP_K_MAX: int = 10
     MODEL_OUTPUT_DIR: str = 'data/models'

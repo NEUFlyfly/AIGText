@@ -24,8 +24,8 @@ fi
 # --- 默认配置 ---
 VISION_HOST="0.0.0.0"
 VISION_PORT=9101
-TAXONOMY_PATH="$VISION_ROOT/data/iot_knowledge/iot_taxonomy.json"
-REFERENCE_DIR="$VISION_ROOT/data/iot_knowledge/reference_images"
+TAXONOMY_PATH="$REPO_ROOT/data/iot_knowledge/iot_taxonomy.json"
+REFERENCE_DIR="$REPO_ROOT/data/iot_knowledge/reference_images"
 
 # --- 解析参数 ---
 NEXT_IS_PORT=0
@@ -75,7 +75,7 @@ fi
 
 if [ ! -f "$TAXONOMY_PATH" ]; then
     echo "[ERROR] 分类体系文件不存在: $TAXONOMY_PATH"
-    echo "[INFO] 请确认 vision_backend/data/iot_knowledge/iot_taxonomy.json 存在"
+    echo "[INFO] 请确认 data/iot_knowledge/iot_taxonomy.json 存在"
     exit 1
 fi
 
@@ -99,7 +99,7 @@ cd "$VISION_ROOT"
 export PYTHONPATH="$VISION_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
 # --- 启动服务器 ---
-exec "$PYTHON" -m src.vision.vision_server \
+exec "$PYTHON" vision_server.py \
     --host "$VISION_HOST" \
     --port "$VISION_PORT" \
     --taxonomy "$TAXONOMY_PATH" \
