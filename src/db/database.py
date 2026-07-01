@@ -90,9 +90,18 @@ def get_conversation(cid):
         "SELECT id, role, content, image_data, created_at FROM messages WHERE conversation_id = ? ORDER BY id",
         (cid,)
     ).fetchall()
+    result_messages = []
+    for m in messages:
+        d = dict(m)
+        if d.get("image_data") and isinstance(d["image_data"], str):
+            try:
+                d["image_data"] = json.loads(d["image_data"])
+            except (json.JSONDecodeError, TypeError):
+                pass  # 保持原始字符串（旧数据或单图 URL）
+        result_messages.append(d)
     return {"id": conv["id"], "title": conv["title"],
             "created_at": conv["created_at"], "updated_at": conv["updated_at"],
-            "messages": [dict(m) for m in messages]}
+            "messages": result_messages}
 
 
 def delete_conversation(cid):
@@ -136,3 +145,27 @@ def save_messages(cid, messages):
     else:
         conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, cid))
     conn.commit()
+
+
+def get_all_messages():
+    """Return all messages from all conversations in a single query.
+    Used by learning/ page to avoid N+1 HTTP requests.
+    Returns list of {id, role, content, image_data, created_at, conversation_id}.
+    """
+    messages = _connect().execute("""
+        SELECT m.id, m.role, m.content, m.image_data, m.created_at,
+               m.conversation_id, c.title AS conversation_title
+        FROM messages m
+        JOIN conversations c ON m.conversation_id = c.id
+        ORDER BY m.id
+    """).fetchall()
+    result = []
+    for m in messages:
+        d = dict(m)
+        if d.get("image_data") and isinstance(d["image_data"], str):
+            try:
+                d["image_data"] = json.loads(d["image_data"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        result.append(d)
+    return result

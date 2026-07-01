@@ -20,6 +20,7 @@ from email.parser import BytesParser
 from email.policy import default
 from io import BytesIO
 import json
+import logging
 import os
 import socket
 import sys
@@ -28,6 +29,12 @@ import urllib.error
 import urllib.request
 import webbrowser
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+)
+logger = logging.getLogger("front_server")
 from socketserver import ThreadingMixIn
 from typing import Callable
 
@@ -147,6 +154,8 @@ class FrontendHandler(SimpleHTTPRequestHandler):
         elif self.path.startswith("/api/conversations/"):
             conv_id = self.path[len("/api/conversations/"):]
             self._get_conversation(conv_id)
+        elif self.path == "/api/learning/messages":
+            self._handle_learning_messages()
         elif self.path == "/api/knowledge-graph":
             self._serve_knowledge_graph()
         elif self.path.startswith("/data/") or self.path == "/data":
@@ -204,19 +213,21 @@ class FrontendHandler(SimpleHTTPRequestHandler):
                     pipeline is not None and pipeline.is_ready
                 )
                 backend_data["vision_backend"] = vision_backend
+                body = json.dumps(backend_data).encode("utf-8")
                 self.send_response(200)
                 self._send_cors()
                 self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
-                self.wfile.write(json.dumps(backend_data).encode())
+                self.wfile.write(body)
+        except (ConnectionAbortedError, BrokenPipeError, OSError) as e:
+            # 客户端在响应完成前断开连接，正常现象，静默忽略
+            logger.debug("[health] client disconnected during write: %s", e)
         except Exception as e:
-            pipeline = _get_rag_pipeline()
-            self.send_response(503)
-            self._send_cors()
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(
-                json.dumps({
+            logger.warning("[health] backend proxy error: %s", e)
+            try:
+                pipeline = _get_rag_pipeline()
+                err_body = json.dumps({
                     "status": "error",
                     "message": str(e),
                     "rag_ready": (
@@ -224,7 +235,14 @@ class FrontendHandler(SimpleHTTPRequestHandler):
                     ),
                     "vision_backend": vision_backend,
                 }).encode()
-            )
+                self.send_response(503)
+                self._send_cors()
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(err_body)))
+                self.end_headers()
+                self.wfile.write(err_body)
+            except (ConnectionAbortedError, BrokenPipeError, OSError):
+                pass
 
     def _proxy_chat(self):
         content_length = int(self.headers.get("Content-Length", 0))
@@ -398,9 +416,9 @@ class FrontendHandler(SimpleHTTPRequestHandler):
         self._send_json(response_payload, 200)
 
     def _handle_visual_compare(self) -> None:
-        """POST /api/vision/compare — 多图设备对比"""
+        """POST /api/vision/compare — 多图设备对比（支持流式输出）"""
         try:
-            images, question, top_k = _parse_compare_multipart(self)
+            images, question, top_k, is_stream = _parse_compare_multipart(self)
         except ValueError as exc:
             self._send_json(_visual_error_response("INVALID_IMAGE", str(exc)), 400)
             return
@@ -440,6 +458,14 @@ class FrontendHandler(SimpleHTTPRequestHandler):
             return
 
         if not any(r.get("candidates") for r in visual_results):
+            if is_stream:
+                self._send_json({
+                    "status": "NO_VISUAL_MATCH",
+                    "message": "所有图片均未识别到设备",
+                    "visual_results": visual_results,
+                    "answer": "",
+                }, 200)
+                return
             self._send_json({
                 "status": "NO_VISUAL_MATCH",
                 "message": "所有图片均未识别到设备",
@@ -469,8 +495,59 @@ class FrontendHandler(SimpleHTTPRequestHandler):
         comparison_data = "\n".join(parts)
 
         prompt = render_prompt("compare_prompt", comparison_data=comparison_data, query=question or "")
+
+        llm_payload = {
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2,
+            "max_tokens": 1024,
+            "stream": is_stream,
+        }
+        llm_body = json.dumps(llm_payload, ensure_ascii=False).encode("utf-8")
+        llm_req = urllib.request.Request(
+            f"{self.backend_url}/v1/chat/completions",
+            data=llm_body,
+            headers={"Content-Type": "application/json"},
+        )
+
         try:
-            answer = _request_llama_answer(self.backend_url, prompt)
+            with urllib.request.urlopen(llm_req, timeout=300) as llm_resp:
+                if is_stream:
+                    self.send_response(200)
+                    self._send_cors()
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Cache-Control", "no-cache")
+                    self.send_header("X-Accel-Buffering", "no")
+                    self.end_headers()
+                    try:
+                        for raw_line in llm_resp:
+                            self.wfile.write(raw_line)
+                            self.wfile.flush()
+                    except Exception:
+                        pass  # 客户端断开
+                else:
+                    raw_body = llm_resp.read()
+                    response_payload = json.loads(raw_body)
+                    answer = _extract_llama_answer(response_payload)
+                    if answer is None:
+                        self._send_json({
+                            "status": "MODEL_NOT_READY",
+                            "message": "LLM backend response did not include an answer",
+                            "visual_results": visual_results,
+                            "answer": "",
+                        }, 503)
+                        return
+                    self._send_json({
+                        "status": "OK",
+                        "visual_results": visual_results,
+                        "answer": answer,
+                    }, 200)
+        except urllib.error.HTTPError as exc:
+            body = exc.read() if exc.fp else b'{"error":"llm backend error"}'
+            self._send_cors()
+            self.send_response(exc.code)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
         except Exception as exc:
             self._send_json({
                 "status": "MODEL_NOT_READY",
@@ -478,13 +555,6 @@ class FrontendHandler(SimpleHTTPRequestHandler):
                 "visual_results": visual_results,
                 "answer": "",
             }, 503)
-            return
-
-        self._send_json({
-            "status": "OK",
-            "visual_results": visual_results,
-            "answer": answer,
-        }, 200)
 
     # ------------------------------------------------------------------
     # 工具
@@ -517,6 +587,11 @@ class FrontendHandler(SimpleHTTPRequestHandler):
         return json.loads(raw_body.decode("utf-8"))
 
     # ---- Conversation API ----
+    def _handle_learning_messages(self):
+        """GET /api/learning/messages — 返回所有对话的所有消息（一次查询，避免 N+1 请求）"""
+        from src.db import database as db
+        self._send_json(db.get_all_messages())
+
     def _list_conversations(self):
         """GET /api/conversations — 返回所有对话列表"""
         from src.db import database as db
@@ -648,6 +723,7 @@ class FrontendHandler(SimpleHTTPRequestHandler):
 # ------------------------------------------------------------------
 
 def _get_vision_backend_client():
+    """Get or create vision backend client singleton."""
     global _vision_backend_client
     if _vision_backend_client is not None:
         return _vision_backend_client
@@ -656,6 +732,11 @@ def _get_vision_backend_client():
         if _vision_backend_client is None:
             from src.vision.vision_client import VisionBackendClient
             _vision_backend_client = VisionBackendClient()
+            logger.info(
+                "[vision] client created: base_url=%s timeout=%.1fs",
+                _vision_backend_client._base_url,
+                _vision_backend_client._timeout_seconds,
+            )
     return _vision_backend_client
 
 
@@ -728,8 +809,8 @@ def _validate_image_upload(image_bytes: bytes) -> None:
 
 def _parse_compare_multipart(
     handler: SimpleHTTPRequestHandler,
-) -> tuple[list[bytes], str, int | None]:
-    """解析对比模式的多图片 multipart 请求，返回 (图片列表, 问题, top_k)。"""
+) -> tuple[list[bytes], str, int | None, bool]:
+    """解析对比模式的多图片 multipart 请求，返回 (图片列表, 问题, top_k, stream)。"""
     content_type = handler.headers.get("Content-Type", "")
     if not content_type.lower().startswith("multipart/form-data"):
         raise ValueError("Expected multipart/form-data with image fields")
@@ -752,6 +833,7 @@ def _parse_compare_multipart(
     question_value: str | None = None
     query_value: str | None = None
     top_k: int | None = None
+    stream_value: bool = False
 
     for part in message.iter_parts():
         name = part.get_param("name", header="content-disposition")
@@ -772,6 +854,10 @@ def _parse_compare_multipart(
                 query_value = decoded_value
             elif name == "top_k" and decoded_value:
                 top_k = _parse_positive_int(decoded_value, "top_k")
+        elif name == "stream":
+            raw_value = part.get_payload(decode=True)
+            value_bytes = raw_value if isinstance(raw_value, bytes) else b""
+            stream_value = value_bytes.decode("utf-8", errors="replace").strip().lower() == "true"
 
     if len(images) < 2:
         raise ValueError("对比模式需要至少 2 张图片")
@@ -781,7 +867,7 @@ def _parse_compare_multipart(
     for img_bytes in images:
         _validate_image_upload(img_bytes)
 
-    return images, question_value or query_value or DEFAULT_VISUAL_QUESTION, top_k
+    return images, question_value or query_value or DEFAULT_VISUAL_QUESTION, top_k, stream_value
 
 
 def _run_dual_host_visual_query(
@@ -789,12 +875,31 @@ def _run_dual_host_visual_query(
     question: str,
     top_k: int | None,
 ) -> dict[str, object]:
-    visual_result = _get_vision_backend_client().search(
-        image_bytes,
-        question=question,
-        top_k=top_k,
+    logger.info(
+        "[vision] query start: image=%dB question=%r top_k=%s",
+        len(image_bytes),
+        question[:80],
+        top_k,
     )
+    try:
+        visual_result = _get_vision_backend_client().search(
+            image_bytes,
+            question=question,
+            top_k=top_k,
+        )
+    except _vision_backend_unavailable_errors() as exc:
+        logger.error("[vision] query FAILED (unavailable): %s", exc)
+        raise
+    except Exception as exc:
+        logger.error("[vision] query ERROR: %s", exc, exc_info=True)
+        raise
+
     visual_candidates = _candidate_list(visual_result.get("visual_candidates"))
+    logger.info(
+        "[vision] query got %d candidate(s), doc_ids=%s",
+        len(visual_candidates),
+        _candidate_doc_ids(visual_candidates),
+    )
 
     if not visual_candidates:
         return _visual_payload(
@@ -932,7 +1037,9 @@ def _format_text_sources(chunks: list[dict[str, object]]) -> str:
 def _vision_backend_health_payload() -> dict[str, object]:
     try:
         payload = _get_vision_backend_client().health()
+        logger.info("[vision] health check result: %s", json.dumps(payload, ensure_ascii=False))
     except _vision_backend_unavailable_errors() as exc:
+        logger.warning("[vision] health check FAILED (unavailable): %s", exc)
         return {
             "status": "unavailable",
             "reachable": False,
@@ -940,6 +1047,7 @@ def _vision_backend_health_payload() -> dict[str, object]:
             "message": str(exc),
         }
     except Exception as exc:
+        logger.error("[vision] health check ERROR: %s", exc, exc_info=True)
         return {
             "status": "error",
             "reachable": False,
@@ -948,6 +1056,7 @@ def _vision_backend_health_payload() -> dict[str, object]:
         }
 
     status = _string_or_none(payload.get("status")) or "ok"
+    logger.info("[vision] health: status=%s reachable=True", status)
     return {
         "status": status,
         "reachable": True,

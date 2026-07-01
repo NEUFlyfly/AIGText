@@ -1,5 +1,5 @@
 /**
- * AIGText Chat — 简化可靠版本
+ * IoTBrain Chat — 简化可靠版本
  * 功能：文本聊天（SSE 流式）、图片上传、对话历史
  */
 (function () {
@@ -20,6 +20,9 @@
     lastSpokenText: "",
     compareMode: false,
     comparePhotos: [],  // Array of { blob, url }
+    cameraStream: null,     // MediaStream from getUserMedia
+    cameraFacingMode: "environment",  // "environment" 或 "user"
+    cameraCapturedBlob: null,  // 拍照后的 Blob
   };
 
   const dom = {
@@ -49,6 +52,16 @@
     voiceMicBtn: document.getElementById("voice-mic-btn"),
     compareToggleBtn: document.getElementById("compare-toggle-btn"),
     compareStrip: document.getElementById("compare-strip"),
+    // camera modal
+    cameraModal: document.getElementById("camera-modal"),
+    cameraVideo: document.getElementById("camera-video"),
+    cameraCaptureBtn: document.getElementById("camera-capture"),
+    cameraFlipBtn: document.getElementById("camera-flip"),
+    cameraCloseBtn: document.getElementById("camera-close"),
+    cameraPreview: document.getElementById("camera-preview"),
+    cameraPreviewImg: document.getElementById("camera-preview-img"),
+    cameraRetakeBtn: document.getElementById("camera-retake"),
+    cameraConfirmBtn: document.getElementById("camera-confirm"),
     // voiceFields set in toggleVoiceMode
   };
 
@@ -68,58 +81,103 @@
   // - 有完整 <think>...</think> 时，提取两段
   // - 流式场景只有 <think> 未闭合时，把已累积部分当 think、answer 为空
   // - 完全没有 <think> 标签时，整段当作 answer
+  // 标签匹配：大小写不敏感，允许 <think> 内有可选空格（如 <think >）
   function splitThinkAnswer(raw) {
-    const trimmed = (raw || "").trim();
-    if (!trimmed) return { think: "", answer: "" };
+    const text = raw || "";
+    if (!text) return { think: "", answer: "" };
 
-    const startIdx = trimmed.indexOf("<think>");
-    if (startIdx === -1) {
-      // 没有 think 标签，整段作 answer
-      return { think: "", answer: trimmed };
+    // 匹配开标签：<think> 或 <Think> 或 <think >
+    const openMatch = text.match(/<think\s*>/i);
+    if (!openMatch || openMatch.index === undefined) {
+      return { think: "", answer: text };
     }
 
-    const afterStart = trimmed.indexOf(">", startIdx);
-    if (afterStart === -1) {
-      // "<think>" 还没闭合（流式中），整段视作 think
-      return { think: trimmed.slice(startIdx + 6).trim(), answer: "" };
-    }
-    const bodyStart = afterStart + 1;
+    const bodyStart = openMatch.index + openMatch[0].length;
 
-    const endIdx = trimmed.indexOf("</think>");
-    if (endIdx === -1) {
-      // 开始标签已闭合，但结束标签未到 —— 流式中
-      return { think: trimmed.slice(bodyStart, endIdx).trim(), answer: "" };
+    // 匹配闭标签：</think> 或 </Think> 或 </think >
+    const remainder = text.slice(bodyStart);
+    const closeMatch = remainder.match(/<\/think\s*>/i);
+
+    if (!closeMatch || closeMatch.index === undefined) {
+      // 流式中：闭标签未到，剩余全部作 think（之前 slice(bodyStart, -1) 的截断 bug）
+      return { think: text.slice(bodyStart).trim(), answer: "" };
     }
 
-    const thinkBody = trimmed.slice(bodyStart, endIdx).trim();
-    const answerBody = trimmed.slice(endIdx + 10).trim(); // "</think>".length = 10
+    const closeIdx = bodyStart + closeMatch.index;
+    const thinkBody = text.slice(bodyStart, closeIdx).trim();
+    const answerBody = text.slice(closeIdx + closeMatch[0].length).trim();
+
+    // 安全网：如果 answer 中意外残留 think 标签，递归剥离
+    if (/<think\s*>/i.test(answerBody)) {
+      const nested = splitThinkAnswer(answerBody);
+      return { think: thinkBody + (nested.think ? "\n" + nested.think : ""), answer: nested.answer };
+    }
+
     return { think: thinkBody, answer: answerBody };
   }
 
-  function formatMd(text) {
+   function formatMd(text) {
     if (!text) return "";
-    let html = text
+
+    // ── 提取 <comparison>...</comparison> 块，保护 HTML 表格不被转义 ──
+    // 与 splitThinkAnswer 同理：用显式标签做可靠提取，避免正则脆弱性
+    var cmpBlocks = [];
+    var safe = text.replace(/<comparison>([\s\S]*?)<\/comparison>/gi, function (_, body) {
+      cmpBlocks.push(body);
+      return "\0CMP" + (cmpBlocks.length - 1) + "\0";
+    });
+
+    let html = safe
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      // 表格（必须在 \n → <br> 之前处理）
-      .replace(/(^\|[^\n]*\|\n^\|[-:\s|]*\|\n(?:^\|.*\|\n?)+)/gm, function(match) {
-        const rows = match.trim().split("\n");
-        let table = "<table>";
-        rows.forEach(function(row, i) {
-          if (i === 1 && /^[\|\s\-:]+$/.test(row)) return; // skip separator row
-          const cells = row.split("|").map(function(c) { return c.trim(); }).filter(Boolean);
-          const tag = i === 0 ? "th" : "td";
-          table += "<tr>" + cells.map(function(c) { return "<" + tag + ">" + c + "</" + tag + ">"; }).join("") + "</tr>";
-        });
-        table += "</table>";
-        return table;
-      })
+      .replace(/>/g, "&gt;");
+
+    // 表格：匹配连续以 | 开头（可带前导空白）的行（必须在 \n → <br> 之前）
+    html = html.replace(/(?:^|\n)((?:\s*\|[^\n]+\n)+)/g, function(block, tableBlock) {
+      const lines = tableBlock.split("\n").filter(function(l) {
+        return /\|/.test(l);
+      });
+      if (lines.length < 2) return block;
+
+      // 检测分隔行（行内主要由 | - : 空格组成，支持多列表格）
+      let sepIdx = -1;
+      for (let i = 1; i < lines.length && i < 3; i++) {
+        if (/^\s*\|[\s\-:]+\|([\s\-:]+\|)+\s*$/.test(lines[i])) { sepIdx = i; break; }
+      }
+      if (sepIdx === -1) sepIdx = 1;
+
+      const dataRows = [];
+      for (let i = 0; i < lines.length; i++) {
+        if (i === sepIdx) continue;
+        dataRows.push(lines[i]);
+      }
+      if (dataRows.length < 2) return block;
+
+      let table = "<table>";
+      dataRows.forEach(function(row, i) {
+        const cells = row.split("|").map(function(c) { return c.trim(); });
+        // 去掉首尾空串（由首尾 | 产生）
+        if (cells.length > 1 && cells[0] === "") cells.shift();
+        if (cells.length > 1 && cells[cells.length - 1] === "") cells.pop();
+        const tag = i === 0 ? "th" : "td";
+        table += "<tr>" + cells.map(function(c) { return "<" + tag + ">" + c + "</" + tag + ">"; }).join("") + "</tr>";
+      });
+      table += "</table>";
+      return table;
+    });
+
+    html = html
       .replace(/```[\s\S]*?```/g, match => `<pre><code>${match.slice(3, -3)}</code></pre>`)
       .replace(/`([^`]+)`/g, "<code>$1</code>")
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/\*([^*]*)\*/g, "<em>$1</em>")
       .replace(/\n/g, "<br>");
+
+    // ── 恢复 <comparison> 块（原样 HTML，不被转义） ──
+    html = html.replace(/\0CMP(\d+)\0/g, function (_, i) {
+      return cmpBlocks[parseInt(i, 10)] || "";
+    });
+
     return html;
   }
 
@@ -622,6 +680,7 @@
 
   async function sendCompare() {
     setStreaming(true);
+    state.abortController = new AbortController();
     const question = dom.input.value.trim();
     dom.input.value = "";
 
@@ -662,30 +721,75 @@
       form.append(`image_${i}`, photo.blob, `compare_${i}.jpg`);
     });
     form.append("question", question || "");
+    form.append("stream", "true");
+
+    let fullReply = "";
 
     try {
       const resp = await fetch("/api/vision/compare", {
         method: "POST",
         body: form,
+        signal: state.abortController ? state.abortController.signal : undefined,
       });
+
       if (!resp.ok) throw new Error("HTTP " + resp.status);
-      const result = await resp.json();
-      const answer = result.answer || result.message || "对比分析完成";
-      aiEl.innerHTML = renderAnswerBubble(answer);
+
+      // 检查响应类型：流式 SSE vs JSON
+      const ct = resp.headers.get("Content-Type") || "";
+      if (ct.indexOf("text/event-stream") !== -1) {
+        // 流式 SSE 响应
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6).trim();
+            if (data === "[DONE]") continue;
+            try {
+              const obj = JSON.parse(data);
+              const delta = obj.choices?.[0]?.delta?.content || "";
+              if (delta) {
+                fullReply += delta;
+                aiEl.innerHTML = renderAnswerBubble(fullReply);
+                scrollToBottom();
+              }
+            } catch (e) { /* 跳过非 JSON 行 */ }
+          }
+        }
+
+        if (!fullReply) aiEl.innerHTML = renderAnswerBubble("(无回复)");
+      } else {
+        // 非流式（错误/降级）JSON 响应
+        const result = await resp.json();
+        const answer = result.answer || result.message || "对比分析完成";
+        fullReply = answer;
+        aiEl.innerHTML = renderAnswerBubble(answer);
+      }
+
       state.messages.push({
         role: "assistant",
-        content: answer,
+        content: fullReply,
         timestamp: Date.now(),
         metadata: { type: "compare_result" },
       });
     } catch (err) {
-      aiEl.innerHTML = formatMd("对比分析失败: " + err.message);
+      if (err.name !== "AbortError") {
+        aiEl.innerHTML = formatMd("对比分析失败: " + err.message);
+      }
     } finally {
       // Clean up compare photos
       state.comparePhotos.forEach(p => URL.revokeObjectURL(p.url));
       state.comparePhotos = [];
       renderCompareStrip();
       setStreaming(false);
+      state.abortController = null;
       if (state.messages.length > 0) saveConversation();
     }
   }
@@ -697,19 +801,92 @@
 
   // 图片选择
   dom.galleryButton.addEventListener("click", () => dom.galleryInput.click());
-  dom.cameraButton.addEventListener("click", () => dom.cameraCaptureInput.click());
-
   dom.galleryInput.addEventListener("change", e => {
     const file = e.target.files[0];
     if (file) showThumb(file);
     dom.galleryInput.value = "";
   });
 
+  // 相机：优先用 getUserMedia 实时拍摄；不支持时回退到 capture="environment" 的隐藏 input
+  dom.cameraButton.addEventListener("click", openCameraModal);
   dom.cameraCaptureInput.addEventListener("change", e => {
     const file = e.target.files[0];
     if (file) showThumb(file);
     dom.cameraCaptureInput.value = "";
   });
+
+  // ── Camera Modal ──
+
+  function openCameraModal() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      dom.cameraCaptureInput.click();
+      return;
+    }
+    dom.cameraModal.classList.remove("hidden");
+    dom.cameraModal.setAttribute("aria-hidden", "false");
+    dom.cameraPreview.classList.add("hidden");
+    startCamera();
+  }
+
+  function closeCameraModal() {
+    Camera.stop(state.cameraStream);
+    state.cameraStream = null;
+    dom.cameraVideo.srcObject = null;
+    dom.cameraModal.classList.add("hidden");
+    dom.cameraModal.setAttribute("aria-hidden", "true");
+  }
+
+  async function startCamera() {
+    try {
+      const stream = await Camera.open(dom.cameraVideo, state.cameraFacingMode);
+      state.cameraStream = stream;
+    } catch (err) {
+      console.error("Camera open failed:", err);
+      closeCameraModal();
+      dom.cameraCaptureInput.click();
+    }
+  }
+
+  async function flipCamera() {
+    if (!state.cameraStream) return;
+    state.cameraFacingMode = state.cameraFacingMode === "environment" ? "user" : "environment";
+    Camera.stop(state.cameraStream);
+    state.cameraStream = null;
+    await startCamera();
+  }
+
+  async function capturePhoto() {
+    if (!state.cameraStream) return;
+    try {
+      const blob = await Camera.capture(dom.cameraVideo, 0.9);
+      state.cameraCapturedBlob = blob;
+      dom.cameraPreviewImg.src = URL.createObjectURL(blob);
+      dom.cameraPreview.classList.remove("hidden");
+    } catch (err) {
+      console.error("Photo capture failed:", err);
+    }
+  }
+
+  function retakePhoto() {
+    dom.cameraPreview.classList.add("hidden");
+    if (state.cameraCapturedBlob) {
+      URL.revokeObjectURL(dom.cameraPreviewImg.src);
+      state.cameraCapturedBlob = null;
+    }
+  }
+
+  function confirmPhoto() {
+    if (!state.cameraCapturedBlob) return;
+    showThumb(state.cameraCapturedBlob);
+    closeCameraModal();
+    state.cameraCapturedBlob = null;
+  }
+
+  dom.cameraCloseBtn.addEventListener("click", closeCameraModal);
+  dom.cameraFlipBtn.addEventListener("click", flipCamera);
+  dom.cameraCaptureBtn.addEventListener("click", capturePhoto);
+  dom.cameraRetakeBtn.addEventListener("click", retakePhoto);
+  dom.cameraConfirmBtn.addEventListener("click", confirmPhoto);
 
   function showThumb(file) {
     if (state.compareMode) {
@@ -854,7 +1031,7 @@
     localStorage.setItem("aigtext_last_conv", data.id);
   }
 
-  async function init() {
+   async function init() {
     state.conversationId = null;
     state.messages = [];
     // 恢复上次停留的对话
@@ -873,6 +1050,7 @@
               el.innerHTML = renderAnswerBubble(m.content);
             }
           });
+          prefetchLearningData();
           return;
         }
       } catch (e) {
@@ -880,6 +1058,18 @@
         localStorage.removeItem("aigtext_last_conv");
       }
     }
+    prefetchLearningData();
+  }
+
+  // 后台静默预加载学习界面数据，用户点开学习页面时缓存命中即秒开
+  function prefetchLearningData() {
+    if (sessionStorage.getItem("aigtext_learning_messages")) return;
+    fetch("/api/learning/messages")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        try { sessionStorage.setItem("aigtext_learning_messages", JSON.stringify(data)); } catch (_) {}
+      })
+      .catch(function () {}); // 静默失败，学习页自行请求
   }
 
   if (document.readyState === "loading") {

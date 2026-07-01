@@ -25,6 +25,7 @@ fi
 
 LLAMA_PORT=18080
 FRONTEND_PORT=8080
+VISION_BACKEND_URL=""
 LOG_DIR="$REPO_ROOT/logs"
 BIN_DIR="$REPO_ROOT/bin"
 LLAMA_PID=""
@@ -53,13 +54,15 @@ check_llama() {
 
 # --- 解析参数 ---
 next_is_port=0
+next_is_vision_url=0
 for arg in "$@"; do
     if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
         echo "AIGText 一键启动脚本"
-        echo "用法: bash scripts/start_lang_server.sh [--port PORT]"
+        echo "用法: bash scripts/start_lang_server.sh [选项]"
         echo ""
-        echo "  --port PORT   前端端口 (默认: 8080)"
-        echo "  --help, -h    显示此帮助"
+        echo "  --port PORT          前端端口 (默认: 8080)"
+        echo "  --vision-url URL     视觉后端地址 (默认: http://127.0.0.1:9101)"
+        echo "  --help, -h           显示此帮助"
         exit 0
     fi
     if [ "$arg" = "--port" ]; then
@@ -67,6 +70,11 @@ for arg in "$@"; do
     elif [ "$next_is_port" = "1" ]; then
         FRONTEND_PORT="$arg"
         next_is_port=0
+    elif [ "$arg" = "--vision-url" ]; then
+        next_is_vision_url=1
+    elif [ "$next_is_vision_url" = "1" ]; then
+        VISION_BACKEND_URL="$arg"
+        next_is_vision_url=0
     fi
 done
 
@@ -174,12 +182,18 @@ fi
 
 echo ""
 echo "[frontend] 启动 (端口 $FRONTEND_PORT)..."
-echo "  3D 建模: http://localhost:$FRONTEND_PORT/modeling.html"
+if [ -n "$VISION_BACKEND_URL" ]; then
+    echo "  视觉后端: $VISION_BACKEND_URL (来自 --vision-url)"
+else
+    VISION_BACKEND_URL="http://127.0.0.1:9101"
+    echo "  视觉后端: $VISION_BACKEND_URL (默认，使用 --vision-url 修改)"
+fi
 echo "  聊天页面: http://localhost:$FRONTEND_PORT/chat.html"
 echo "  Ctrl+C 停止全部服务"
 echo ""
 
 export PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+export VISION_BACKEND_URL
 
 # 前台运行 Python 服务器（不用 exec，保持 bash 存活以处理信号）
 "$PYTHON" "$REPO_ROOT/src/front_server.py" \

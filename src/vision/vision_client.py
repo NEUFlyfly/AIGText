@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 import urllib.error
 import urllib.request
 import uuid
 
 from config.settings import settings
+
+logger = logging.getLogger("vision_client")
 
 
 class VisionBackendUnavailable(RuntimeError):
@@ -50,38 +54,90 @@ class VisionBackendClient:
             image_bytes=image_bytes,
             fields=fields,
         )
-        request = urllib.request.Request(
-            f"{self._base_url}/api/vision/search",
-            data=body,
-            headers=self._headers(content_type),
+        url = f"{self._base_url}/api/vision/search"
+        headers = self._headers(content_type)
+        logger.info(
+            "[vision] POST %s image=%dB fields=%s timeout=%.1fs api_key=%s",
+            url, len(image_bytes), list(fields), self._timeout_seconds,
+            "yes" if self._api_key else "no",
         )
+        request = urllib.request.Request(url, data=body, headers=headers)
         return self._json_request(request)
 
     def health(self) -> dict[str, object]:
-        request = urllib.request.Request(
-            f"{self._base_url}/health",
-            headers=self._headers(),
-        )
+        url = f"{self._base_url}/health"
+        logger.info("[vision] health GET %s (timeout=%.1fs)", url, self._timeout_seconds)
+        request = urllib.request.Request(url, headers=self._headers())
         return self._json_request(request)
 
     def _json_request(self, request: urllib.request.Request) -> dict[str, object]:
+        t0 = time.monotonic()
         try:
             with urllib.request.urlopen(
                 request,
                 timeout=self._timeout_seconds,
             ) as response:
                 raw_body = response.read()
+            elapsed = time.monotonic() - t0
+            status = response.status
+            logger.info(
+                "[vision] %s %s -> %d body=%dB elapsed=%.2fs",
+                request.get_method(), request.full_url, status, len(raw_body), elapsed,
+            )
         except TimeoutError as exc:
+            elapsed = time.monotonic() - t0
+            logger.error(
+                "[vision] TIMEOUT %s %s after %.2fs: %s",
+                request.get_method(), request.full_url, elapsed, exc,
+            )
             raise VisionBackendUnavailable("vision backend timed out") from exc
+        except urllib.error.HTTPError as exc:
+            elapsed = time.monotonic() - t0
+            error_body = ""
+            try:
+                error_body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                pass
+            logger.error(
+                "[vision] HTTP ERROR %s %s -> %s %s (elapsed=%.2fs): %s",
+                request.get_method(), request.full_url, exc.code, exc.reason,
+                elapsed, error_body[:500],
+            )
+            raise VisionBackendUnavailable(
+                f"vision backend HTTP {exc.code}: {exc.reason}"
+            ) from exc
         except urllib.error.URLError as exc:
+            elapsed = time.monotonic() - t0
+            logger.error(
+                "[vision] CONNECTION ERROR %s %s after %.2fs: %s",
+                request.get_method(), request.full_url, elapsed, exc,
+            )
             raise VisionBackendUnavailable("vision backend unavailable") from exc
 
         try:
             payload = json.loads(raw_body)
         except json.JSONDecodeError as exc:
+            logger.error(
+                "[vision] BAD JSON from %s (len=%d): %s",
+                request.full_url, len(raw_body), exc,
+            )
             raise VisionBackendResponseError("vision backend returned invalid JSON") from exc
         if not isinstance(payload, dict):
+            logger.error(
+                "[vision] NON-OBJECT response from %s: %s",
+                request.full_url, type(payload).__name__,
+            )
             raise VisionBackendResponseError("vision backend returned a non-object payload")
+
+        coarse = payload.get("coarse_category", "")
+        cand_count = len(payload.get("visual_candidates", []))
+        first_id = ""
+        if payload.get("visual_candidates"):
+            first_id = payload["visual_candidates"][0].get("doc_id", "")
+        logger.info(
+            "[vision] decoded: coarse=%s candidates=%d first_doc=%s",
+            coarse, cand_count, first_id,
+        )
         return payload
 
     def _headers(self, content_type: str | None = None) -> dict[str, str]:

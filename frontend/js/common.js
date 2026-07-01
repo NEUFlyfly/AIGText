@@ -1,5 +1,5 @@
 /**
- * AIGText — Shared Frontend Utilities
+ * IoTBrain — Shared Frontend Utilities
  * Navigation, toast, API helpers — used across all pages.
  */
 

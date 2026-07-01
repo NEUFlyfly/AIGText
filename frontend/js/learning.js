@@ -1,5 +1,5 @@
 /**
- * AIGText — Learning Report
+ * IoTBrain — Learning Report
  * Analytics dashboard: weekly stats, device distribution, daily trends, recent conversations.
  * Data source: Server API (SQLite database).
  */
@@ -26,44 +26,42 @@
 
   async function loadData() {
     try {
-      // 从服务器获取所有对话
-      const resp = await fetch("/api/conversations");
-      if (!resp.ok) throw new Error("HTTP " + resp.status);
-      const conversations = await resp.json();
-      
-      if (!conversations || conversations.length === 0) {
-        showEmptyState();
-        return;
-      }
-      
-      // 获取每个对话的消息
-      const allMessages = [];
-      for (const conv of conversations) {
-        try {
-          const convResp = await fetch("/api/conversations/" + conv.id);
-          if (convResp.ok) {
-            const convData = await convResp.json();
-            if (convData.messages) {
-              // 添加对话 ID 和时间戳
-              convData.messages.forEach(m => {
-                m.conversationId = conv.id;
-                if (!m.timestamp && m.created_at) {
-                  m.timestamp = new Date(m.created_at).getTime();
-                }
-              });
-              allMessages.push(...convData.messages);
-            }
-          }
-        } catch (e) {
-          console.warn("Failed to load conversation:", conv.id, e);
+      let allMessages = null;
+
+      // 优先使用 chat.js 后台预加载的缓存
+      try {
+        const cached = sessionStorage.getItem("aigtext_learning_messages");
+        if (cached) {
+          allMessages = JSON.parse(cached);
         }
+      } catch (_) { /* ignore cache parse errors */ }
+
+      // 缓存未命中 → 单次请求获取所有对话的所有消息
+      if (!allMessages) {
+        const resp = await fetch("/api/learning/messages");
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        allMessages = await resp.json();
+        // 写入缓存供下次使用
+        try {
+          sessionStorage.setItem("aigtext_learning_messages", JSON.stringify(allMessages));
+        } catch (_) { /* ignore quota */ }
       }
-      
-      if (allMessages.length === 0) {
+
+      if (!allMessages || allMessages.length === 0) {
         showEmptyState();
         return;
       }
-      
+
+      // 标准化字段名（兼容旧格式）
+      allMessages.forEach(function (m) {
+        if (m.conversation_id && !m.conversationId) {
+          m.conversationId = m.conversation_id;
+        }
+        if (!m.timestamp && m.created_at) {
+          m.timestamp = new Date(m.created_at).getTime();
+        }
+      });
+
       analyze(allMessages);
     } catch (e) {
       console.error("Failed to load data:", e);

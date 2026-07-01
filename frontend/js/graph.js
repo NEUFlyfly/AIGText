@@ -1,5 +1,5 @@
 /**
- * AIGText — Knowledge Graph (v3)
+ * IoTBrain — Knowledge Graph (v3)
  * Radial force-directed: center root, orbiting categories/subclasses,
  * repulsion between nodes, drag, scroll-wheel zoom.
  */

@@ -1,5 +1,5 @@
 /* ==================================================================
-   AIGText — Chat UI
+   IoTBrain — Chat UI
    Style: WeChat-like, light, clean
    ================================================================== */
 
@@ -1153,12 +1153,13 @@ body::after {
 /* Compare photo strip */
 .compare-strip {
   display: flex;
+  width: 100%;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-lg);
+  min-height: 38px;
   overflow-x: auto;
   background: #f8f9fb;
   border-bottom: 1px solid var(--border-light);
-  animation: fadeUp var(--duration-normal) var(--ease-out);
 }
 .compare-strip.hidden { display: none; }
 
