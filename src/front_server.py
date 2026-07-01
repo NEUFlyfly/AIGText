@@ -414,6 +414,10 @@ class FrontendHandler(SimpleHTTPRequestHandler):
                 self._send_json(error_payload, 503)
                 return
 
+        # Ensure frontend always has a fallback message
+        if not response_payload.get("message"):
+            response_payload["message"] = _visual_status_message(status)
+
         self._send_json(response_payload, 200)
 
     def _handle_visual_compare(self) -> None:
@@ -1258,6 +1262,8 @@ def _visual_status_message(status: str) -> str:
         return "已识别设备类型，但未找到相关的知识文档"
     if status == "error":
         return "视觉后端分类出现错误，请重试"
+    if status == "LLM_NOT_READY":
+        return "识图完成但语言模型未就绪，无法生成介绍"
     return status
 
 
@@ -1372,8 +1378,8 @@ def main():
     lan_urls = ", ".join(f"http://{ip}:{args.port}" for ip in local_ips) if local_ips else "无"
     print(f"AIGText http://localhost:{args.port}  LAN: {lan_urls}", file=sys.stderr)
 
-    # RAG 后台加载，不阻塞 HTTP 服务启动
-    threading.Thread(target=_preload_rag, name="rag-loader", daemon=True).start()
+    # RAG 同步加载 — 必须先完成再启动 HTTP 服务
+    _preload_rag_sync()
 
     # 初始化对话数据库
     try:

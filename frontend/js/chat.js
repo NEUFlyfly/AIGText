@@ -660,11 +660,12 @@
       const result = await resp.json();
 
       let answer = "";
-      if (result.status === "ok" || result.status === "OK") {
+      if (result.answer) {
+        answer += result.answer;
+      } else if (result.status === "ok" || result.status === "OK") {
         const cand = result.visual_candidates?.[0];
         if (cand) answer += "**设备**: " + (cand.sub_category || cand.doc_id || "未知") + "\n\n";
-        if (result.answer) answer += result.answer;
-        else if (result.message) answer += result.message;
+        answer += result.message || "分析完成";
       } else {
         answer = result.message || result.error || "识别失败";
       }
