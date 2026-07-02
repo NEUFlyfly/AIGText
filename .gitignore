@@ -31,8 +31,11 @@ models/vision/*.safetensors
 models/vision/*.pth
 models/vision/*.ckpt
 models/embedding/hub/
+models/clip-vit-base-patch32/
 models/**/.cache/
 models/depth-anything-v2/
+models/**/*.safetensors
+models/**/*.bin
 
 # ---- ChromaDB vector store (rebuildable from documents) ----
 data/vectorstore/
